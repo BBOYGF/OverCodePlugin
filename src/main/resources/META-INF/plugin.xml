@@ -1,15 +1,48 @@
-<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<!-- 插件配置文件。阅读更多：https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 <idea-plugin>
+    <!-- 插件的唯一标识符。必须在全球范围内唯一，通常使用反写域名格式。 -->
     <id>org.jetbrains.plugins.template</id>
-    <name>IntelliJ Platform Plugin Template</name>
+    <!-- 插件在插件市场和 IDE 设置中显示的名称。 -->
+    <name>MyCoolPlugin</name>
+    <!-- 插件的开发商或作者信息。 -->
     <vendor>JetBrains</vendor>
 
+    <!-- 依赖声明。com.intellij.modules.platform 表示该插件依赖于所有 IntelliJ IDE 共有的基础平台功能。 -->
     <depends>com.intellij.modules.platform</depends>
 
+    <!-- 国际化资源包。指向 src/main/resources/messages/MyBundle.properties，用于管理多语言文案。 -->
     <resource-bundle>messages.MyBundle</resource-bundle>
 
+    <!-- 扩展点 (Extensions) 注册。这是插件功能的核心入口，用于声明工具窗口、启动活动、服务等。 -->
     <extensions defaultExtensionNs="com.intellij">
+        <!-- 模板自带的默认工具窗口 -->
         <toolWindow factoryClass="org.jetbrains.plugins.template.toolWindow.MyToolWindowFactory" id="MyToolWindow"/>
+        
+        <!-- 注册我们新增加的工具窗口 -->
+        <!-- id: 窗口的唯一标识；anchor: 默认显示的位置（底部）；icon: 侧边栏显示的图标 -->
+        <toolWindow factoryClass="org.jetbrains.plugins.template.toolWindow.NewToolWindowFactory"
+                    id="MyNewToolWindow"
+                    anchor="bottom"
+                    icon="AllIcons.General.InheritedMethod"/>
+        
+        <!-- 注册一个在项目打开并启动完成后执行的任务 -->
         <postStartupActivity implementation="org.jetbrains.plugins.template.startup.MyProjectActivity" />
     </extensions>
+
+    <!-- 动作 (Actions) 注册。用于声明菜单项、工具栏按钮、快捷键操作等。 -->
+    <actions>
+        <!-- 增加一个按钮 (Action) -->
+        <!-- id: 动作的唯一标识；class: 对应的处理类；text: 菜单上显示的文字；description: 状态栏显示的详细说明 -->
+        <action id="org.jetbrains.plugins.template.HelloAction"
+                class="org.jetbrains.plugins.template.actions.HelloAction"
+                text="Say Hello from MyCoolPlugin"
+                description="Prints a hello message to the user and logs the event.">
+            <!-- 添加到 IDE 顶部的 Tools (工具) 菜单 -->
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <!-- 添加到编辑器代码区的右键菜单（置顶显示） -->
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+            <!-- 添加到左侧 Project 项目视图的右键菜单 -->
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+    </actions>
 </idea-plugin>
