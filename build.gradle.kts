@@ -18,7 +18,7 @@ version = providers.gradleProperty("pluginVersion").get()
 
 // 设置构建项目时使用的 JVM 版本
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(17)
 }
 
 // 配置依赖仓库
@@ -28,6 +28,7 @@ repositories {
     // IntelliJ 平台专用的仓库配置
     intellijPlatform {
         defaultRepositories()
+
     }
 }
 
