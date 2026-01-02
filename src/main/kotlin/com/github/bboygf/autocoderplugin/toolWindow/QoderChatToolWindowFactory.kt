@@ -17,13 +17,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposePanel
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.github.bboygf.autocoderplugin.services.ChatDatabaseService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentFactory
+import kotlinx.coroutines.launch
 import javax.swing.JComponent
 
 /**
@@ -32,16 +33,16 @@ import javax.swing.JComponent
 class QoderChatToolWindowFactory : ToolWindowFactory {
     
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        val composePanel = createComposePanel()
+        val composePanel = createComposePanel(project)
         val contentFactory = ContentFactory.getInstance()
         val content = contentFactory.createContent(composePanel, "", false)
         toolWindow.contentManager.addContent(content)
     }
     
-    private fun createComposePanel(): JComponent {
+    private fun createComposePanel(project: Project): JComponent {
         return ComposePanel().apply {
             setContent {
-                QoderChatUI()
+                QoderChatUI(project)
             }
         }
     }
@@ -63,11 +64,27 @@ data class ChatMessage(
 @OptIn(ExperimentalMaterial3Api::class)
 @Preview
 @Composable
-fun QoderChatUI() {
+fun QoderChatUI(project: Project? = null) {
+    // 数据库服务
+    val dbService = remember(project) { 
+        project?.let { ChatDatabaseService.getInstance(it) }
+    }
+    
+    // 当前会话 ID
+    var currentSessionId by remember { mutableStateOf("default") }
+    
     // 消息列表状态
     var messages by remember { mutableStateOf(listOf<ChatMessage>()) }
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    
+    // 加载历史消息
+    LaunchedEffect(currentSessionId, dbService) {
+        dbService?.let {
+            messages = it.loadMessages(currentSessionId)
+        }
+    }
     
     // 深色主题配色
     val backgroundColor = Color(0xFF2B2B2B)
@@ -100,7 +117,15 @@ fun QoderChatUI() {
                     )
                 },
                 actions = {
-                    IconButton(onClick = { /* 新建会话 */ }) {
+                    IconButton(onClick = { 
+                        // 新建会话
+                        coroutineScope.launch {
+                            dbService?.let {
+                                currentSessionId = it.createSession()
+                                messages = emptyList()
+                            }
+                        }
+                    }) {
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = "新建",
@@ -114,10 +139,16 @@ fun QoderChatUI() {
                             tint = textSecondaryColor
                         )
                     }
-                    IconButton(onClick = { /* 菜单 */ }) {
+                    IconButton(onClick = { 
+                        // 清空当前会话
+                        coroutineScope.launch {
+                            dbService?.clearMessages(currentSessionId)
+                            messages = emptyList()
+                        }
+                    }) {
                         Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = "更多",
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "清空",
                             tint = textSecondaryColor
                         )
                     }
@@ -160,20 +191,37 @@ fun QoderChatUI() {
                     if (inputText.isNotBlank()) {
                         // 添加用户消息
                         val userInput = inputText
-                        messages = messages + ChatMessage(
+                        val userMessage = ChatMessage(
                             id = System.currentTimeMillis().toString(),
                             content = userInput,
                             isUser = true
                         )
+                        messages = messages + userMessage
+                        
+                        // 保存用户消息到数据库
+                        coroutineScope.launch {
+                            dbService?.saveMessage(userMessage, currentSessionId)
+                        }
                         
                         // 添加 AI 回复
-                        messages = messages + ChatMessage(
+                        val aiMessage = ChatMessage(
                             id = (System.currentTimeMillis() + 1).toString(),
                             content = "收到您的消息：「$userInput」。我是 Qoder，我可以帮您解答编程相关的问题。",
                             isUser = false
                         )
+                        messages = messages + aiMessage
+                        
+                        // 保存 AI 消息到数据库
+                        coroutineScope.launch {
+                            dbService?.saveMessage(aiMessage, currentSessionId)
+                        }
                         
                         inputText = ""
+                        
+                        // 滚动到底部
+                        coroutineScope.launch {
+                            listState.animateScrollToItem(messages.size - 1)
+                        }
                     }
                 },
                 backgroundColor = surfaceColor,

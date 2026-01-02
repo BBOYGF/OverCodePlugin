@@ -45,6 +45,12 @@ dependencies {
     implementation(compose.material3)
     implementation(compose.ui)
     implementation(compose.foundation)
+    
+    // Exposed 数据库框架
+    implementation(libs.exposed.core)
+    implementation(libs.exposed.dao)
+    implementation(libs.exposed.jdbc)
+    implementation(libs.sqlite.jdbc)
 
     // IntelliJ 平台相关的依赖配置
     intellijPlatform {
@@ -67,6 +73,9 @@ dependencies {
 
 // 配置 IntelliJ 平台插件 - 核心配置
 intellijPlatform {
+    // 禁用字节码增强，避免下载 java-compiler-ant-tasks 依赖
+    instrumentCode = false
+    
     pluginConfiguration {
         // 插件名称
         name = providers.gradleProperty("pluginName")
