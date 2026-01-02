@@ -6,6 +6,8 @@ import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 plugins {
     id("java") // Java 语言支持
     alias(libs.plugins.kotlin) // Kotlin 语言支持
+    alias(libs.plugins.composeCompiler) // Compose Compiler 插件 - 必须在 compose 插件之前
+    alias(libs.plugins.compose) // Jetpack Compose for Desktop 支持
     alias(libs.plugins.intelliJPlatform) // IntelliJ 平台官方 Gradle 插件，用于插件开发
     alias(libs.plugins.changelog) // 管理插件更新日志 (CHANGELOG.md) 的插件
     alias(libs.plugins.qodana) // JetBrains 的代码质量扫描插件
@@ -24,6 +26,7 @@ kotlin {
 // 配置依赖仓库
 repositories {
     mavenCentral()
+    google()  // 添加 Google Maven 仓库以支持 AndroidX 依赖
 
     // IntelliJ 平台专用的仓库配置
     intellijPlatform {
@@ -36,6 +39,12 @@ repositories {
 dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.opentest4j)
+
+    // Compose Desktop 依赖
+    implementation(compose.desktop.currentOs)
+    implementation(compose.material3)
+    implementation(compose.ui)
+    implementation(compose.foundation)
 
     // IntelliJ 平台相关的依赖配置
     intellijPlatform {
