@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.github.bboygf.autocoderplugin.llm.LLMMessage
+import com.github.bboygf.autocoderplugin.llm.LLMService
 import com.github.bboygf.autocoderplugin.services.ChatDatabaseService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
@@ -70,12 +72,18 @@ fun QoderChatUI(project: Project? = null) {
         project?.let { ChatDatabaseService.getInstance(it) }
     }
     
+    // LLM 服务
+    val llmService = remember(project) {
+        project?.let { LLMService.getInstance(it) }
+    }
+    
     // 当前会话 ID
     var currentSessionId by remember { mutableStateOf("default") }
     
     // 消息列表状态
     var messages by remember { mutableStateOf(listOf<ChatMessage>()) }
     var inputText by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     
@@ -187,41 +195,80 @@ fun QoderChatUI(project: Project? = null) {
             BottomInputArea(
                 inputText = inputText,
                 onInputChange = { inputText = it },
+                isLoading = isLoading,
                 onSend = {
-                    if (inputText.isNotBlank()) {
-                        // 添加用户消息
+                    if (inputText.isNotBlank() && !isLoading) {
                         val userInput = inputText
-                        val userMessage = ChatMessage(
-                            id = System.currentTimeMillis().toString(),
-                            content = userInput,
-                            isUser = true
-                        )
-                        messages = messages + userMessage
-                        
-                        // 保存用户消息到数据库
-                        coroutineScope.launch {
-                            dbService?.saveMessage(userMessage, currentSessionId)
-                        }
-                        
-                        // 添加 AI 回复
-                        val aiMessage = ChatMessage(
-                            id = (System.currentTimeMillis() + 1).toString(),
-                            content = "收到您的消息：「$userInput」。我是 Qoder，我可以帮您解答编程相关的问题。",
-                            isUser = false
-                        )
-                        messages = messages + aiMessage
-                        
-                        // 保存 AI 消息到数据库
-                        coroutineScope.launch {
-                            dbService?.saveMessage(aiMessage, currentSessionId)
-                        }
-                        
                         inputText = ""
+                        isLoading = true
                         
-                        // 滚动到底部
-                        coroutineScope.launch {
-                            listState.animateScrollToItem(messages.size - 1)
-                        }
+                        // 使用普通线程而不是协程
+                        Thread {
+                            try {
+                                // 添加用户消息
+                                val userMessage = ChatMessage(
+                                    id = System.currentTimeMillis().toString(),
+                                    content = userInput,
+                                    isUser = true
+                                )
+                                
+                                // 在 UI 线程更新消息列表
+                                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                                    messages = messages + userMessage
+                                }
+                                
+                                dbService?.saveMessage(userMessage, currentSessionId)
+                                
+                                // 构建历史消息
+                                val llmMessages = messages.map { msg ->
+                                    LLMMessage(
+                                        role = if (msg.isUser) "user" else "assistant",
+                                        content = msg.content
+                                    )
+                                }
+                                
+                                // 调用 LLM API（已经在后台线程）
+                                val aiResponse = try {
+                                    llmService?.chat(llmMessages)
+                                        ?: "未配置模型，请先在设置中配置并激活一个模型"
+                                } catch (e: Exception) {
+                                    "错误: ${e.message ?: "未知错误"}"
+                                }
+                                
+                                // 添加 AI 回复
+                                val aiMessage = ChatMessage(
+                                    id = (System.currentTimeMillis() + 1).toString(),
+                                    content = aiResponse,
+                                    isUser = false
+                                )
+                                
+                                // 在 UI 线程更新消息列表
+                                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                                    messages = messages + aiMessage
+                                    isLoading = false
+                                    
+                                    // 滚动到底部
+                                    coroutineScope.launch {
+                                        listState.animateScrollToItem(messages.size - 1)
+                                    }
+                                }
+                                
+                                dbService?.saveMessage(aiMessage, currentSessionId)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                                // 显示错误消息
+                                val errorMessage = ChatMessage(
+                                    id = (System.currentTimeMillis() + 1).toString(),
+                                    content = "错误: ${e.message ?: "未知错误"}",
+                                    isUser = false
+                                )
+                                
+                                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                                    messages = messages + errorMessage
+                                    isLoading = false
+                                }
+                            }
+                        }.start()
                     }
                 },
                 backgroundColor = surfaceColor,
@@ -403,6 +450,7 @@ fun MessageBubble(message: ChatMessage) {
 fun BottomInputArea(
     inputText: String,
     onInputChange: (String) -> Unit,
+    isLoading: Boolean,
     onSend: () -> Unit,
     backgroundColor: Color,
     textColor: Color
@@ -466,13 +514,21 @@ fun BottomInputArea(
             IconButton(
                 onClick = onSend,
                 modifier = Modifier.size(36.dp),
-                enabled = inputText.isNotBlank()
+                enabled = inputText.isNotBlank() && !isLoading
             ) {
-                Icon(
-                    imageVector = Icons.Default.Send,
-                    contentDescription = "发送",
-                    tint = if (inputText.isNotBlank()) Color(0xFF4A9D5F) else Color(0xFF606060)
-                )
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = Color(0xFF4A9D5F)
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Send,
+                        contentDescription = "发送",
+                        tint = if (inputText.isNotBlank()) Color(0xFF4A9D5F) else Color(0xFF606060)
+                    )
+                }
             }
         }
     }

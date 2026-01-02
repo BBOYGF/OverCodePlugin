@@ -31,6 +31,21 @@ object ChatSessions : IntIdTable("chat_sessions") {
 }
 
 /**
+ * 模型配置数据库表定义
+ */
+object ModelConfigs : IntIdTable("model_configs") {
+    val modelId = varchar("model_id", 50).uniqueIndex()
+    val name = varchar("name", 100)
+    val provider = varchar("provider", 50) // "openai", "ollama", "zhipu", etc.
+    val baseUrl = varchar("base_url", 500)
+    val apiKey = varchar("api_key", 500).default("")
+    val modelName = varchar("model_name", 100) // "gpt-3.5-turbo", "llama2", etc.
+    val isActive = bool("is_active").default(false)
+    val createdAt = long("created_at")
+    val updatedAt = long("updated_at")
+}
+
+/**
  * 聊天数据库服务
  */
 @Service(Service.Level.PROJECT)
@@ -54,9 +69,9 @@ class ChatDatabaseService(private val project: Project) {
             driver = "org.sqlite.JDBC"
         )
         
-        // 初始化数据库表
+        // 初始化数据库表（自动创建表和新增列）
         transaction(database) {
-            SchemaUtils.create(ChatMessages, ChatSessions)
+            SchemaUtils.createMissingTablesAndColumns(ChatMessages, ChatSessions, ModelConfigs)
         }
     }
     
@@ -211,6 +226,143 @@ class ChatDatabaseService(private val project: Project) {
         return "session_${System.currentTimeMillis()}_${(1000..9999).random()}"
     }
     
+    // ==================== 模型管理 ====================
+    
+    /**
+     * 添加模型配置
+     */
+    fun addModelConfig(config: ModelConfigInfo): String {
+        val modelId = generateModelId()
+        transaction(database) {
+            // 如果设置为当前模型，先取消其他模型的激活状态
+            if (config.isActive) {
+                ModelConfigs.update({ ModelConfigs.isActive eq true }) {
+                    it[isActive] = false
+                }
+            }
+            
+            val now = System.currentTimeMillis()
+            ModelConfigs.insert {
+                it[ModelConfigs.modelId] = modelId
+                it[name] = config.name
+                it[provider] = config.provider
+                it[baseUrl] = config.baseUrl
+                it[apiKey] = config.apiKey
+                it[modelName] = config.modelName
+                it[isActive] = config.isActive
+                it[createdAt] = now
+                it[updatedAt] = now
+            }
+        }
+        return modelId
+    }
+    
+    /**
+     * 更新模型配置
+     */
+    fun updateModelConfig(modelId: String, config: ModelConfigInfo) {
+        transaction(database) {
+            // 如果设置为当前模型，先取消其他模型的激活状态
+            if (config.isActive) {
+                ModelConfigs.update({ ModelConfigs.isActive eq true }) {
+                    it[isActive] = false
+                }
+            }
+            
+            ModelConfigs.update({ ModelConfigs.modelId eq modelId }) {
+                it[name] = config.name
+                it[provider] = config.provider
+                it[baseUrl] = config.baseUrl
+                it[apiKey] = config.apiKey
+                it[modelName] = config.modelName
+                it[isActive] = config.isActive
+                it[updatedAt] = System.currentTimeMillis()
+            }
+        }
+    }
+    
+    /**
+     * 删除模型配置
+     */
+    fun deleteModelConfig(modelId: String) {
+        transaction(database) {
+            ModelConfigs.deleteWhere { ModelConfigs.modelId eq modelId }
+        }
+    }
+    
+    /**
+     * 获取所有模型配置
+     */
+    fun getAllModelConfigs(): List<ModelConfigInfo> {
+        return transaction(database) {
+            ModelConfigs.selectAll()
+                .orderBy(ModelConfigs.createdAt to SortOrder.DESC)
+                .map { row ->
+                    ModelConfigInfo(
+                        modelId = row[ModelConfigs.modelId],
+                        name = row[ModelConfigs.name],
+                        provider = row[ModelConfigs.provider],
+                        baseUrl = row[ModelConfigs.baseUrl],
+                        apiKey = row[ModelConfigs.apiKey],
+                        modelName = row[ModelConfigs.modelName],
+                        isActive = row[ModelConfigs.isActive],
+                        createdAt = row[ModelConfigs.createdAt],
+                        updatedAt = row[ModelConfigs.updatedAt]
+                    )
+                }
+        }
+    }
+    
+    /**
+     * 获取当前激活的模型配置
+     */
+    fun getActiveModelConfig(): ModelConfigInfo? {
+        return transaction(database) {
+            ModelConfigs.selectAll()
+                .where { ModelConfigs.isActive eq true }
+                .limit(1)
+                .firstOrNull()
+                ?.let { row ->
+                    ModelConfigInfo(
+                        modelId = row[ModelConfigs.modelId],
+                        name = row[ModelConfigs.name],
+                        provider = row[ModelConfigs.provider],
+                        baseUrl = row[ModelConfigs.baseUrl],
+                        apiKey = row[ModelConfigs.apiKey],
+                        modelName = row[ModelConfigs.modelName],
+                        isActive = row[ModelConfigs.isActive],
+                        createdAt = row[ModelConfigs.createdAt],
+                        updatedAt = row[ModelConfigs.updatedAt]
+                    )
+                }
+        }
+    }
+    
+    /**
+     * 设置当前激活的模型
+     */
+    fun setActiveModel(modelId: String) {
+        transaction(database) {
+            // 取消所有模型的激活状态
+            ModelConfigs.update({ ModelConfigs.isActive eq true }) {
+                it[isActive] = false
+            }
+            
+            // 设置指定模型为激活
+            ModelConfigs.update({ ModelConfigs.modelId eq modelId }) {
+                it[isActive] = true
+                it[updatedAt] = System.currentTimeMillis()
+            }
+        }
+    }
+    
+    /**
+     * 生成唯一模型 ID
+     */
+    private fun generateModelId(): String {
+        return "model_${System.currentTimeMillis()}_${(1000..9999).random()}"
+    }
+    
     companion object {
         fun getInstance(project: Project): ChatDatabaseService {
             return project.getService(ChatDatabaseService::class.java)
@@ -226,4 +378,19 @@ data class SessionInfo(
     val title: String,
     val createdAt: Long,
     val updatedAt: Long
+)
+
+/**
+ * 模型配置信息数据类
+ */
+data class ModelConfigInfo(
+    val modelId: String = "",
+    val name: String,
+    val provider: String,
+    val baseUrl: String,
+    val apiKey: String = "",
+    val modelName: String,
+    val isActive: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
 )

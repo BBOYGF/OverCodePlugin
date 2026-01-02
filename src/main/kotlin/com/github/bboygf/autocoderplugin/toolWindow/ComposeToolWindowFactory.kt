@@ -31,6 +31,7 @@ class ComposeToolWindowFactory : ToolWindowFactory {
     private fun createComposePanel(): JComponent {
         return ComposePanel().apply {
             setContent {
+                // compose ui
                 ComposeToolWindowContent()
             }
         }

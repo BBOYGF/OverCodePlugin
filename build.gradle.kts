@@ -51,6 +51,9 @@ dependencies {
     implementation(libs.exposed.dao)
     implementation(libs.exposed.jdbc)
     implementation(libs.sqlite.jdbc)
+    
+    // JSON 处理
+    implementation("org.json:json:20231013")
 
     // IntelliJ 平台相关的依赖配置
     intellijPlatform {
