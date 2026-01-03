@@ -11,7 +11,7 @@ intelliJPlatform = "2.10.5"
 kotlin = "2.2.21"
 kover = "0.9.3"
 qodana = "2025.2.2"
-compose = "1.7.3"
+compose = "1.9.3"
 composeCompiler = "1.5.15"
 
 [libraries]
