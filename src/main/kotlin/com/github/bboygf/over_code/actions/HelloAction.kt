@@ -1,4 +1,4 @@
-package com.github.bboygf.autocoderplugin.actions
+package com.github.bboygf.over_code.actions
 
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent

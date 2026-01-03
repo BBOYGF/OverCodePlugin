@@ -1,4 +1,4 @@
-package com.github.bboygf.autocoderplugin.settings
+package com.github.bboygf.over_code.ui.settings
 
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ConfigurableProvider

@@ -1,6 +1,6 @@
-package com.github.bboygf.autocoderplugin.services
+package com.github.bboygf.over_code.services
 
-import com.github.bboygf.autocoderplugin.toolWindow.ChatMessage
+import com.github.bboygf.over_code.ui.toolWindow.ChatMessage
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 import org.jetbrains.exposed.dao.id.IntIdTable
@@ -55,13 +55,13 @@ class ChatDatabaseService(private val project: Project) {
     
     init {
         // 获取插件数据目录
-        val pluginDataDir = File(System.getProperty("user.home"), ".AutoCoderPlugin")
+        val pluginDataDir = File(System.getProperty("user.home"), ".over_code")
         if (!pluginDataDir.exists()) {
             pluginDataDir.mkdirs()
         }
         
         // 数据库文件路径
-        val dbFile = File(pluginDataDir, "qoder_chat.db")
+        val dbFile = File(pluginDataDir, "over_code.db")
         
         // 连接 SQLite 数据库
         database = Database.connect(

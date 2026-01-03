@@ -20,7 +20,7 @@ version = providers.gradleProperty("pluginVersion").get()
 
 // 设置构建项目时使用的 JVM 版本
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
 }
 
 // 配置依赖仓库

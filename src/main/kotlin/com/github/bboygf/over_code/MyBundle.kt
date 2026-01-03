@@ -1,4 +1,4 @@
-package com.github.bboygf.autocoderplugin
+package com.github.bboygf.over_code
 
 import com.intellij.DynamicBundle
 import org.jetbrains.annotations.NonNls

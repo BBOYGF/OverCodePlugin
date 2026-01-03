@@ -1,4 +1,4 @@
-package com.github.bboygf.autocoderplugin.llm
+package com.github.bboygf.over_code.llm
 
 /**
  * LLM 消息数据类

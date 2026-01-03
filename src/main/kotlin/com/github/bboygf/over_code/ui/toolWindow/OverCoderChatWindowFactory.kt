@@ -1,4 +1,4 @@
-package com.github.bboygf.autocoderplugin.toolWindow
+package com.github.bboygf.over_code.ui.toolWindow
 
 import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.background
@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -19,32 +20,31 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.github.bboygf.autocoderplugin.llm.LLMMessage
-import com.github.bboygf.autocoderplugin.llm.LLMService
-import com.github.bboygf.autocoderplugin.services.ChatDatabaseService
+import com.github.bboygf.over_code.actions.ChatViewModelHolder
+import com.github.bboygf.over_code.llm.LLMService
+import com.github.bboygf.over_code.services.ChatDatabaseService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentFactory
 import kotlinx.coroutines.launch
 import javax.swing.JComponent
-
 /**
- * Qoder 聊天界面工具窗口
+ * Over Code 聊天界面工具窗口
  */
-class QoderChatToolWindowFactory : ToolWindowFactory {
-    
+class OverCoderChatToolWindowFactory : ToolWindowFactory {
+
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val composePanel = createComposePanel(project)
         val contentFactory = ContentFactory.getInstance()
         val content = contentFactory.createContent(composePanel, "", false)
         toolWindow.contentManager.addContent(content)
     }
-    
+
     private fun createComposePanel(project: Project): JComponent {
         return ComposePanel().apply {
             setContent {
-                QoderChatUI(project)
+                OverCodeChatUI(project)
             }
         }
     }
@@ -61,46 +61,51 @@ data class ChatMessage(
 )
 
 /**
- * Qoder 聊天主界面
+ * Over Code 聊天主界面
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Preview
 @Composable
-fun QoderChatUI(project: Project? = null) {
+fun OverCodeChatUI(project: Project? = null) {
     // 数据库服务
-    val dbService = remember(project) { 
+    val dbService = remember(project) {
         project?.let { ChatDatabaseService.getInstance(it) }
     }
-    
+
     // LLM 服务
     val llmService = remember(project) {
         project?.let { LLMService.getInstance(it) }
     }
-    
-    // 当前会话 ID
-    var currentSessionId by remember { mutableStateOf("default") }
-    
-    // 消息列表状态
-    var messages by remember { mutableStateOf(listOf<ChatMessage>()) }
-    var inputText by remember { mutableStateOf("") }
-    var isLoading by remember { mutableStateOf(false) }
-    val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
-    
-    // 加载历史消息
-    LaunchedEffect(currentSessionId, dbService) {
-        dbService?.let {
-            messages = it.loadMessages(currentSessionId)
-        }
+
+    // ViewModel
+    val viewModel = remember(dbService, llmService) {
+        ChatViewModel(dbService, llmService)
     }
     
+    // 注册 ViewModel 到 Project Service，以便 Action 可以访问
+    LaunchedEffect(project, viewModel) {
+        project?.getService(ChatViewModelHolder::class.java)?.let { holder ->
+            holder.viewModel = viewModel
+        }
+    }
+
+    // UI状态
+    var inputText by remember { mutableStateOf("") }
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+
+    // 加载历史消息
+    LaunchedEffect(viewModel.currentSessionId) {
+        viewModel.loadMessages(viewModel.currentSessionId)
+    }
+
     // 深色主题配色
     val backgroundColor = Color(0xFF2B2B2B)
     val surfaceColor = Color(0xFF3C3F41)
     val primaryColor = Color(0xFF4A9D5F)
     val textPrimaryColor = Color(0xFFBBBBBB)
     val textSecondaryColor = Color(0xFF808080)
-    
+
     MaterialTheme(
         colorScheme = darkColorScheme(
             background = backgroundColor,
@@ -125,14 +130,8 @@ fun QoderChatUI(project: Project? = null) {
                     )
                 },
                 actions = {
-                    IconButton(onClick = { 
-                        // 新建会话
-                        coroutineScope.launch {
-                            dbService?.let {
-                                currentSessionId = it.createSession()
-                                messages = emptyList()
-                            }
-                        }
+                    IconButton(onClick = {
+                        viewModel.createNewSession()
                     }) {
                         Icon(
                             imageVector = Icons.Default.Add,
@@ -147,12 +146,8 @@ fun QoderChatUI(project: Project? = null) {
                             tint = textSecondaryColor
                         )
                     }
-                    IconButton(onClick = { 
-                        // 清空当前会话
-                        coroutineScope.launch {
-                            dbService?.clearMessages(currentSessionId)
-                            messages = emptyList()
-                        }
+                    IconButton(onClick = {
+                        viewModel.clearCurrentSession()
                     }) {
                         Icon(
                             imageVector = Icons.Default.Delete,
@@ -166,14 +161,14 @@ fun QoderChatUI(project: Project? = null) {
                     titleContentColor = textPrimaryColor
                 )
             )
-            
+
             // 中央对话区域
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
             ) {
-                if (messages.isEmpty()) {
+                if (viewModel.messages.isEmpty()) {
                     // 空状态 - 显示欢迎界面
                     WelcomeScreen()
                 } else {
@@ -184,91 +179,31 @@ fun QoderChatUI(project: Project? = null) {
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(messages) { message ->
+                        items(viewModel.messages) { message ->
                             MessageBubble(message)
                         }
                     }
                 }
             }
-            
+
             // 底部输入区域
             BottomInputArea(
                 inputText = inputText,
                 onInputChange = { inputText = it },
-                isLoading = isLoading,
+                isLoading = viewModel.isLoading,
                 onSend = {
-                    if (inputText.isNotBlank() && !isLoading) {
+                    if (inputText.isNotBlank()) {
                         val userInput = inputText
                         inputText = ""
-                        isLoading = true
                         
-                        // 使用普通线程而不是协程
-                        Thread {
-                            try {
-                                // 添加用户消息
-                                val userMessage = ChatMessage(
-                                    id = System.currentTimeMillis().toString(),
-                                    content = userInput,
-                                    isUser = true
-                                )
-                                
-                                // 在 UI 线程更新消息列表
-                                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-                                    messages = messages + userMessage
-                                }
-                                
-                                dbService?.saveMessage(userMessage, currentSessionId)
-                                
-                                // 构建历史消息
-                                val llmMessages = messages.map { msg ->
-                                    LLMMessage(
-                                        role = if (msg.isUser) "user" else "assistant",
-                                        content = msg.content
-                                    )
-                                }
-                                
-                                // 调用 LLM API（已经在后台线程）
-                                val aiResponse = try {
-                                    llmService?.chat(llmMessages)
-                                        ?: "未配置模型，请先在设置中配置并激活一个模型"
-                                } catch (e: Exception) {
-                                    "错误: ${e.message ?: "未知错误"}"
-                                }
-                                
-                                // 添加 AI 回复
-                                val aiMessage = ChatMessage(
-                                    id = (System.currentTimeMillis() + 1).toString(),
-                                    content = aiResponse,
-                                    isUser = false
-                                )
-                                
-                                // 在 UI 线程更新消息列表
-                                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-                                    messages = messages + aiMessage
-                                    isLoading = false
-                                    
-                                    // 滚动到底部
-                                    coroutineScope.launch {
-                                        listState.animateScrollToItem(messages.size - 1)
-                                    }
-                                }
-                                
-                                dbService?.saveMessage(aiMessage, currentSessionId)
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                                // 显示错误消息
-                                val errorMessage = ChatMessage(
-                                    id = (System.currentTimeMillis() + 1).toString(),
-                                    content = "错误: ${e.message ?: "未知错误"}",
-                                    isUser = false
-                                )
-                                
-                                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-                                    messages = messages + errorMessage
-                                    isLoading = false
+                        viewModel.sendMessage(userInput) {
+                            // 自动滚动到底部
+                            coroutineScope.launch {
+                                if (viewModel.messages.isNotEmpty()) {
+                                    listState.animateScrollToItem(viewModel.messages.size - 1)
                                 }
                             }
-                        }.start()
+                        }
                     }
                 },
                 backgroundColor = surfaceColor,
@@ -290,7 +225,7 @@ fun WelcomeScreen() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // Qoder Logo (使用简单的圆形图标代替)
+        // Over Code Logo (使用简单的圆形图标代替)
         Box(
             modifier = Modifier
                 .size(80.dp)
@@ -307,28 +242,28 @@ fun WelcomeScreen() {
                 color = Color(0xFF888888)
             )
         }
-        
+
         Spacer(modifier = Modifier.height(24.dp))
-        
-        // Qoder 标题
+
+        // Over Code 标题
         Text(
-            text = "Qoder",
+            text = "Over Code",
             fontSize = 24.sp,
             fontWeight = FontWeight.Medium,
             color = Color(0xFF888888)
         )
-        
+
         Spacer(modifier = Modifier.height(16.dp))
-        
+
         // 欢迎文字
         Text(
             text = "打开关闭窗口",
             fontSize = 13.sp,
             color = Color(0xFF606060)
         )
-        
+
         Spacer(modifier = Modifier.height(40.dp))
-        
+
         // 底部介绍卡片
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -358,12 +293,12 @@ fun WelcomeScreen() {
                         color = Color.White
                     )
                 }
-                
+
                 Spacer(modifier = Modifier.width(12.dp))
-                
+
                 // 介绍文字
                 Text(
-                    text = "嗨！我是Qoder。我可以帮你一起编程，或者为你解答编程相关问题。",
+                    text = "嗨！我是Over Code。我可以帮你一起编程，或者为你解答编程相关问题。",
                     fontSize = 13.sp,
                     color = Color(0xFFBBBBBB),
                     lineHeight = 20.sp
@@ -397,12 +332,12 @@ fun MessageBubble(message: ChatMessage) {
                     text = "Q",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = Color.White,
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
         }
-        
+
         // 消息内容
         Card(
             modifier = Modifier.widthIn(max = 300.dp),
@@ -411,15 +346,17 @@ fun MessageBubble(message: ChatMessage) {
             ),
             shape = RoundedCornerShape(8.dp)
         ) {
-            Text(
-                text = message.content,
-                modifier = Modifier.padding(12.dp),
-                fontSize = 13.sp,
-                color = if (message.isUser) Color.White else Color(0xFFBBBBBB),
-                lineHeight = 20.sp
-            )
+            SelectionContainer {
+                Text(
+                    text = message.content,
+                    modifier = Modifier.padding(12.dp),
+                    fontSize = 13.sp,
+                    color = if (message.isUser) Color.White else Color(0xFFBBBBBB),
+                    lineHeight = 20.sp
+                )
+            }
         }
-        
+
         if (message.isUser) {
             Spacer(modifier = Modifier.width(8.dp))
             // 用户头像
@@ -461,7 +398,7 @@ fun BottomInputArea(
             .background(backgroundColor)
     ) {
         Divider(color = Color(0xFF2B2B2B), thickness = 1.dp)
-        
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -479,9 +416,9 @@ fun BottomInputArea(
                     tint = Color(0xFF808080)
                 )
             }
-            
+
             Spacer(modifier = Modifier.width(8.dp))
-            
+
             // 输入框
             OutlinedTextField(
                 value = inputText,
@@ -507,9 +444,9 @@ fun BottomInputArea(
                 minLines = 2,
                 maxLines = 6
             )
-            
+
             Spacer(modifier = Modifier.width(8.dp))
-            
+
             // 发送按钮
             IconButton(
                 onClick = onSend,

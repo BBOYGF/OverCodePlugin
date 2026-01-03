@@ -1,4 +1,4 @@
-package com.github.bboygf.autocoderplugin.settings
+package com.github.bboygf.over_code.ui.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,10 +12,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposePanel
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.github.bboygf.autocoderplugin.services.ChatDatabaseService
-import com.github.bboygf.autocoderplugin.services.ModelConfigInfo
+import com.github.bboygf.over_code.services.ChatDatabaseService
+import com.github.bboygf.over_code.services.ModelConfigInfo
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.project.Project
+import java.awt.Dimension
 import javax.swing.JComponent
 
 /**
@@ -26,12 +27,12 @@ class ModelConfigurable(private val project: Project) : Configurable {
     private val dbService = ChatDatabaseService.getInstance(project)
     private var composePanel: ComposePanel? = null
     
-    override fun getDisplayName(): String = "Qoder 模型配置"
+    override fun getDisplayName(): String = "Over Code 模型配置"
     
     override fun createComponent(): JComponent {
         println("[ModelConfigurable] Creating component...")
         composePanel = ComposePanel().apply {
-            preferredSize = java.awt.Dimension(800, 600)
+            preferredSize = Dimension(800, 600)
             setContent {
                 MaterialTheme {
                     Surface(
@@ -61,12 +62,11 @@ class ModelConfigurable(private val project: Project) : Configurable {
 @Composable
 fun ModelConfigScreen(dbService: ChatDatabaseService) {
     println("[ModelConfigScreen] Rendering...")
-    var modelConfigs by remember { mutableStateOf(dbService.getAllModelConfigs()) }
-    var selectedIndex by remember { mutableStateOf<Int?>(null) }
-    var showAddDialog by remember { mutableStateOf(false) }
-    var editingConfig by remember { mutableStateOf<ModelConfigInfo?>(null) }
     
-    println("[ModelConfigScreen] Model configs count: ${modelConfigs.size}")
+    // ViewModel
+    val viewModel = remember { ModelConfigViewModel(dbService) }
+    
+    println("[ModelConfigScreen] Model configs count: ${viewModel.modelConfigs.size}")
     
     Column(
         modifier = Modifier
@@ -86,49 +86,28 @@ fun ModelConfigScreen(dbService: ChatDatabaseService) {
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Button(onClick = { showAddDialog = true }) {
+            Button(onClick = { viewModel.showAddDialog() }) {
                 Text("添加模型")
             }
             
             Button(
-                onClick = {
-                    selectedIndex?.let { index ->
-                        if (index < modelConfigs.size) {
-                            editingConfig = modelConfigs[index]
-                        }
-                    }
-                },
-                enabled = selectedIndex != null
+                onClick = { viewModel.startEditConfig() },
+                enabled = viewModel.selectedIndex != null
             ) {
                 Text("编辑")
             }
             
             Button(
-                onClick = {
-                    selectedIndex?.let { index ->
-                        if (index < modelConfigs.size) {
-                            dbService.deleteModelConfig(modelConfigs[index].modelId)
-                            modelConfigs = dbService.getAllModelConfigs()
-                            selectedIndex = null
-                        }
-                    }
-                },
-                enabled = selectedIndex != null,
+                onClick = { viewModel.deleteSelectedConfig() },
+                enabled = viewModel.selectedIndex != null,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB00020))
             ) {
                 Text("删除")
             }
             
             Button(
-                onClick = {
-                    selectedIndex?.let { index ->
-                        if (index < modelConfigs.size) {
-                            dbService.setActiveModel(modelConfigs[index].modelId)
-                            modelConfigs = dbService.getAllModelConfigs()
-                        }
-                    }
-                },
-                enabled = selectedIndex != null
+                onClick = { viewModel.setSelectedAsActive() },
+                enabled = viewModel.selectedIndex != null
             ) {
                 Text("设为当前模型")
             }
@@ -160,11 +139,11 @@ fun ModelConfigScreen(dbService: ChatDatabaseService) {
                 }
                 
                 // 数据行
-                itemsIndexed(modelConfigs) { index, config ->
+                itemsIndexed(viewModel.modelConfigs) { index, config ->
                     ModelConfigRow(
                         config = config,
-                        isSelected = selectedIndex == index,
-                        onClick = { selectedIndex = index }
+                        isSelected = viewModel.selectedIndex == index,
+                        onClick = { viewModel.selectConfig(index) }
                     )
                 }
             }
@@ -172,27 +151,25 @@ fun ModelConfigScreen(dbService: ChatDatabaseService) {
     }
     
     // 添加模型对话框
-    if (showAddDialog) {
+    if (viewModel.showAddDialog) {
         ModelConfigDialog(
             config = null,
-            onDismiss = { showAddDialog = false },
+            viewModel = viewModel,
+            onDismiss = { viewModel.hideAddDialog() },
             onConfirm = { newConfig ->
-                dbService.addModelConfig(newConfig)
-                modelConfigs = dbService.getAllModelConfigs()
-                showAddDialog = false
+                viewModel.addModelConfig(newConfig)
             }
         )
     }
     
     // 编辑模型对话框
-    editingConfig?.let { config ->
+    viewModel.editingConfig?.let { config ->
         ModelConfigDialog(
             config = config,
-            onDismiss = { editingConfig = null },
+            viewModel = viewModel,
+            onDismiss = { viewModel.cancelEdit() },
             onConfirm = { updatedConfig ->
-                dbService.updateModelConfig(config.modelId, updatedConfig)
-                modelConfigs = dbService.getAllModelConfigs()
-                editingConfig = null
+                viewModel.updateModelConfig(config.modelId, updatedConfig)
             }
         )
     }
@@ -233,6 +210,7 @@ fun ModelConfigRow(
 @Composable
 fun ModelConfigDialog(
     config: ModelConfigInfo?,
+    viewModel: ModelConfigViewModel,
     onDismiss: () -> Unit,
     onConfirm: (ModelConfigInfo) -> Unit
 ) {
@@ -249,31 +227,12 @@ fun ModelConfigDialog(
     // 预设配置
     LaunchedEffect(provider) {
         if (config == null) {
-            when (provider) {
-                "openai" -> {
-                    baseUrl = "https://api.openai.com/v1"
-                    modelName = "gpt-3.5-turbo"
-                }
-                "ollama" -> {
-                    baseUrl = "http://localhost:11434"
-                    modelName = "llama2"
+            val (presetBaseUrl, presetModelName) = viewModel.getProviderPreset(provider)
+            if (presetBaseUrl.isNotEmpty()) {
+                baseUrl = presetBaseUrl
+                modelName = presetModelName
+                if (provider == "ollama") {
                     apiKey = ""
-                }
-                "zhipu" -> {
-                    baseUrl = "https://open.bigmodel.cn/api/paas/v4"
-                    modelName = "glm-4"
-                }
-                "qwen" -> {
-                    baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-                    modelName = "qwen-plus"
-                }
-                "deepseek" -> {
-                    baseUrl = "https://api.deepseek.com/v1"
-                    modelName = "deepseek-chat"
-                }
-                "moonshot" -> {
-                    baseUrl = "https://api.moonshot.cn/v1"
-                    modelName = "moonshot-v1-8k"
                 }
             }
         }
