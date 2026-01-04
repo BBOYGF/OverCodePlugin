@@ -1,0 +1,11 @@
+package com.github.bboygf.over_code.po
+
+/**
+ * 消息数据类
+ */
+data class ChatMessage(
+    val id: String,
+    val content: String,
+    val isUser: Boolean,
+    val timestamp: Long = System.currentTimeMillis()
+)

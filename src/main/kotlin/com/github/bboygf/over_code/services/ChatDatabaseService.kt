@@ -1,6 +1,6 @@
 package com.github.bboygf.over_code.services
 
-import com.github.bboygf.over_code.ui.toolWindow.ChatMessage
+import com.github.bboygf.over_code.po.ChatMessage
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 import org.jetbrains.exposed.dao.id.IntIdTable
@@ -50,31 +50,31 @@ object ModelConfigs : IntIdTable("model_configs") {
  */
 @Service(Service.Level.PROJECT)
 class ChatDatabaseService(private val project: Project) {
-    
+
     private val database: Database
-    
+
     init {
         // 获取插件数据目录
         val pluginDataDir = File(System.getProperty("user.home"), ".over_code")
         if (!pluginDataDir.exists()) {
             pluginDataDir.mkdirs()
         }
-        
+
         // 数据库文件路径
         val dbFile = File(pluginDataDir, "over_code.db")
-        
+
         // 连接 SQLite 数据库
         database = Database.connect(
             url = "jdbc:sqlite:${dbFile.absolutePath}",
             driver = "org.sqlite.JDBC"
         )
-        
+
         // 初始化数据库表（自动创建表和新增列）
         transaction(database) {
             SchemaUtils.createMissingTablesAndColumns(ChatMessages, ChatSessions, ModelConfigs)
         }
     }
-    
+
     /**
      * 保存消息到数据库
      */
@@ -87,12 +87,12 @@ class ChatDatabaseService(private val project: Project) {
                 it[timestamp] = message.timestamp
                 it[ChatMessages.sessionId] = sessionId
             }
-            
+
             // 更新会话的最后更新时间
             updateSessionTimestamp(sessionId)
         }
     }
-    
+
     /**
      * 批量保存消息
      */
@@ -110,7 +110,7 @@ class ChatDatabaseService(private val project: Project) {
             updateSessionTimestamp(sessionId)
         }
     }
-    
+
     /**
      * 加载指定会话的所有消息
      */
@@ -129,7 +129,7 @@ class ChatDatabaseService(private val project: Project) {
                 }
         }
     }
-    
+
     /**
      * 删除指定会话的所有消息
      */
@@ -138,7 +138,7 @@ class ChatDatabaseService(private val project: Project) {
             ChatMessages.deleteWhere { ChatMessages.sessionId eq sessionId }
         }
     }
-    
+
     /**
      * 创建新会话
      */
@@ -154,7 +154,7 @@ class ChatDatabaseService(private val project: Project) {
         }
         return sessionId
     }
-    
+
     /**
      * 获取所有会话
      */
@@ -172,7 +172,7 @@ class ChatDatabaseService(private val project: Project) {
                 }
         }
     }
-    
+
     /**
      * 更新会话标题
      */
@@ -184,7 +184,7 @@ class ChatDatabaseService(private val project: Project) {
             }
         }
     }
-    
+
     /**
      * 删除会话及其所有消息
      */
@@ -194,7 +194,7 @@ class ChatDatabaseService(private val project: Project) {
             ChatSessions.deleteWhere { ChatSessions.sessionId eq sessionId }
         }
     }
-    
+
     /**
      * 更新会话时间戳
      */
@@ -202,7 +202,7 @@ class ChatDatabaseService(private val project: Project) {
         val exists = ChatSessions.selectAll()
             .where { ChatSessions.sessionId eq sessionId }
             .count() > 0
-        
+
         if (exists) {
             ChatSessions.update({ ChatSessions.sessionId eq sessionId }) {
                 it[updatedAt] = System.currentTimeMillis()
@@ -218,16 +218,16 @@ class ChatDatabaseService(private val project: Project) {
             }
         }
     }
-    
+
     /**
      * 生成唯一会话 ID
      */
     private fun generateSessionId(): String {
         return "session_${System.currentTimeMillis()}_${(1000..9999).random()}"
     }
-    
+
     // ==================== 模型管理 ====================
-    
+
     /**
      * 添加模型配置
      */
@@ -240,7 +240,7 @@ class ChatDatabaseService(private val project: Project) {
                     it[isActive] = false
                 }
             }
-            
+
             val now = System.currentTimeMillis()
             ModelConfigs.insert {
                 it[ModelConfigs.modelId] = modelId
@@ -256,7 +256,7 @@ class ChatDatabaseService(private val project: Project) {
         }
         return modelId
     }
-    
+
     /**
      * 更新模型配置
      */
@@ -268,7 +268,7 @@ class ChatDatabaseService(private val project: Project) {
                     it[isActive] = false
                 }
             }
-            
+
             ModelConfigs.update({ ModelConfigs.modelId eq modelId }) {
                 it[name] = config.name
                 it[provider] = config.provider
@@ -280,7 +280,7 @@ class ChatDatabaseService(private val project: Project) {
             }
         }
     }
-    
+
     /**
      * 删除模型配置
      */
@@ -289,7 +289,7 @@ class ChatDatabaseService(private val project: Project) {
             ModelConfigs.deleteWhere { ModelConfigs.modelId eq modelId }
         }
     }
-    
+
     /**
      * 获取所有模型配置
      */
@@ -312,7 +312,7 @@ class ChatDatabaseService(private val project: Project) {
                 }
         }
     }
-    
+
     /**
      * 获取当前激活的模型配置
      */
@@ -337,7 +337,7 @@ class ChatDatabaseService(private val project: Project) {
                 }
         }
     }
-    
+
     /**
      * 设置当前激活的模型
      */
@@ -347,7 +347,7 @@ class ChatDatabaseService(private val project: Project) {
             ModelConfigs.update({ ModelConfigs.isActive eq true }) {
                 it[isActive] = false
             }
-            
+
             // 设置指定模型为激活
             ModelConfigs.update({ ModelConfigs.modelId eq modelId }) {
                 it[isActive] = true
@@ -355,14 +355,14 @@ class ChatDatabaseService(private val project: Project) {
             }
         }
     }
-    
+
     /**
      * 生成唯一模型 ID
      */
     private fun generateModelId(): String {
         return "model_${System.currentTimeMillis()}_${(1000..9999).random()}"
     }
-    
+
     companion object {
         fun getInstance(project: Project): ChatDatabaseService {
             return project.getService(ChatDatabaseService::class.java)

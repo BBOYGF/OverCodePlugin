@@ -16,10 +16,8 @@
     <!-- 扩展点 (Extensions) 注册。这是插件功能的核心入口，用于声明工具窗口、启动活动、服务等。 -->
     <extensions defaultExtensionNs="com.intellij">
 
-
-        
         <!-- Over Code 聊天界面工具窗口 -->
-        <toolWindow factoryClass="com.github.bboygf.over_code.ui.toolWindow.OverCoderChatToolWindowFactory"
+        <toolWindow factoryClass="com.github.bboygf.over_code.ui.home.OverCoderHomeWindowFactory"
                     id="Over Code"
                     anchor="right"
                     icon="AllIcons.Toolwindows.ToolWindowMessages"/>
@@ -30,8 +28,8 @@
         <!-- 注册模型配置设置页面 -->
         <projectConfigurable
                 parentId="tools"
-                provider="com.github.bboygf.over_code.ui.settings.ModelConfigurableProvider"
-                id="com.github.bboygf.over_code.ui.settings.ModelConfigurable"
+                provider="com.github.bboygf.over_code.ui.model_config.ModelConfigurableProvider"
+                id="com.github.bboygf.over_code.ui.model_config.ModelConfigurable"
                 displayName="Over Code 模型配置"/>
     </extensions>
 

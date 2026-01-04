@@ -1,4 +1,4 @@
-package com.github.bboygf.over_code.ui.settings
+package com.github.bboygf.over_code.ui.model_config
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf

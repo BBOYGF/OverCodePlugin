@@ -1,10 +1,11 @@
-package com.github.bboygf.over_code.ui.toolWindow
+package com.github.bboygf.over_code.ui.home
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.github.bboygf.over_code.llm.LLMMessage
 import com.github.bboygf.over_code.llm.LLMService
+import com.github.bboygf.over_code.po.ChatMessage
 import com.github.bboygf.over_code.services.ChatDatabaseService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -14,7 +15,7 @@ import kotlinx.coroutines.launch
  * 聊天界面的ViewModel
  * 负责管理聊天消息、会话状态和与LLM服务的交互
  */
-class ChatViewModel(
+class HomeViewModel(
     private val dbService: ChatDatabaseService?,
     private val llmService: LLMService?
 ) {

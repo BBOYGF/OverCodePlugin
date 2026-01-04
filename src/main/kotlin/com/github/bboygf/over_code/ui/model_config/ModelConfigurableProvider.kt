@@ -1,4 +1,4 @@
-package com.github.bboygf.over_code.ui.settings
+package com.github.bboygf.over_code.ui.model_config
 
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ConfigurableProvider

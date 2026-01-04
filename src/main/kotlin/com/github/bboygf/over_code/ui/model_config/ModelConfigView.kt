@@ -1,4 +1,4 @@
-package com.github.bboygf.over_code.ui.settings
+package com.github.bboygf.over_code.ui.model_config
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -37,7 +37,7 @@ class ModelConfigurable(private val project: Project) : Configurable {
                 MaterialTheme {
                     Surface(
                         modifier = Modifier.fillMaxSize(),
-                        color = Color(0xFF2B2B2B)
+                        color = Color(0xFF1E1F22)
                     ) {
                         ModelConfigScreen(dbService)
                     }

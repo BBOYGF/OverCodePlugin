@@ -1,6 +1,6 @@
 package com.github.bboygf.over_code.actions
 
-import com.github.bboygf.over_code.ui.toolWindow.ChatViewModel
+import com.github.bboygf.over_code.ui.home.HomeViewModel
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
@@ -72,7 +72,7 @@ class AskAIAction : AnAction() {
  */
 @Service(Service.Level.PROJECT)
 class ChatViewModelHolder {
-    var viewModel: ChatViewModel? = null
+    var viewModel: HomeViewModel? = null
     
     fun sendMessageToChat(message: String) {
         viewModel?.sendMessageFromExternal(message)

@@ -17,7 +17,6 @@ class InitProjectActivity : ProjectActivity {
 
     override suspend fun execute(project: Project) {
         logger.info("Over Coder 插件正在初始化...")
-        
         try {
             // 在 IO 线程中初始化数据库服务
             withContext(Dispatchers.IO) {
