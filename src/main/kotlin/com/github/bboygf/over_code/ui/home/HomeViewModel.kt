@@ -7,15 +7,23 @@ import com.github.bboygf.over_code.llm.LLMMessage
 import com.github.bboygf.over_code.llm.LLMService
 import com.github.bboygf.over_code.po.ChatMessage
 import com.github.bboygf.over_code.services.ChatDatabaseService
+import com.github.bboygf.over_code.services.ModelConfigInfo
+import com.github.bboygf.over_code.services.SessionInfo
+import com.intellij.openapi.command.WriteCommandAction
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.fileEditor.FileEditorManager
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 
 /**
  * 聊天界面的ViewModel
  * 负责管理聊天消息、会话状态和与LLM服务的交互
  */
 class HomeViewModel(
+    private val project: Project?,
     private val dbService: ChatDatabaseService?,
     private val llmService: LLMService?
 ) {
@@ -28,9 +36,51 @@ class HomeViewModel(
     
     var isLoading by mutableStateOf(false)
         private set
+
+    var sessions by mutableStateOf(listOf<SessionInfo>())
+        private set
+
+    var showHistory by mutableStateOf(false)
+
+    // 模型和模式状态
+    var modelConfigs by mutableStateOf(listOf<ModelConfigInfo>())
+        private set
+
+    var activeModel by mutableStateOf<ModelConfigInfo?>(null)
+        private set
+
+    var chatMode by mutableStateOf("计划模式") // "计划模式" 或 "执行模式"
     
     private val ioScope = CoroutineScope(Dispatchers.IO)
     
+    /**
+     * 加载所有模型配置并获取当前激活的模型
+     */
+    fun loadModelConfigs() {
+        dbService?.let {
+            val configs = it.getAllModelConfigs()
+            modelConfigs = configs
+            activeModel = configs.find { it.isActive }
+        }
+    }
+
+    /**
+     * 切换激活模型
+     */
+    fun setActiveModel(modelId: String) {
+        dbService?.let {
+            it.setActiveModel(modelId)
+            loadModelConfigs()
+        }
+    }
+
+    /**
+     * 加载所有会话
+     */
+    fun loadSessions() {
+        sessions = dbService?.loadSessions() ?: emptyList()
+    }
+
     /**
      * 加载指定会话的历史消息
      */
@@ -46,6 +96,19 @@ class HomeViewModel(
         dbService?.let {
             currentSessionId = it.createSession()
             messages = emptyList()
+            showHistory = false
+        }
+    }
+
+    /**
+     * 删除会话
+     */
+    fun deleteSession(sessionId: String) {
+        dbService?.deleteSession(sessionId)
+        loadSessions()
+        if (currentSessionId == sessionId) {
+            messages = emptyList()
+            currentSessionId = "default"
         }
     }
     
@@ -95,7 +158,6 @@ class HomeViewModel(
         ioScope.launch {
             try {
                 var fullContent = ""
-                
                 llmService?.chatStream(llmMessages) { chunk ->
                     fullContent += chunk
                     
@@ -157,6 +219,31 @@ class HomeViewModel(
     fun sendMessageFromExternal(userInput: String) {
         sendMessage(userInput) {
             // 空回调，因为从外部调用时可能无法访问UI的滚动状态
+        }
+    }
+
+    /**
+     * 复制文本到剪贴板
+     */
+    fun copyToClipboard(text: String) {
+        val selection = StringSelection(text)
+        Toolkit.getDefaultToolkit().systemClipboard.setContents(selection, selection)
+    }
+
+    /**
+     * 在当前活动编辑器的光标位置插入代码
+     */
+    fun insertCodeAtCursor(code: String) {
+        val currentProject = project ?: return
+        val editor = FileEditorManager.getInstance(currentProject).selectedTextEditor ?: return
+        val document = editor.document
+        val caretModel = editor.caretModel
+        val offset = caretModel.offset
+
+        WriteCommandAction.runWriteCommandAction(currentProject) {
+            document.insertString(offset, code)
+            // 移动光标到插入内容之后
+            caretModel.moveToOffset(offset + code.length)
         }
     }
 }

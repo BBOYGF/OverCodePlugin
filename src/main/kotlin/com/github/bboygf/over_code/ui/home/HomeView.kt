@@ -2,6 +2,7 @@ package com.github.bboygf.over_code.ui.home
 
 import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,23 +11,31 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposePanel
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.bboygf.over_code.actions.ChatViewModelHolder
 import com.github.bboygf.over_code.llm.LLMService
 import com.github.bboygf.over_code.services.ChatDatabaseService
+import com.github.bboygf.over_code.services.SessionInfo
 import com.github.bboygf.over_code.ui.component.BottomInputArea
 import com.github.bboygf.over_code.ui.component.MessageBubble
 import com.github.bboygf.over_code.ui.component.WelcomeScreen
+import com.github.bboygf.over_code.ui.model_config.ModelConfigurable
+import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentFactory
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.*
 import javax.swing.JComponent
+
 /**
  * Over Code 聊天界面工具窗口
  */
@@ -48,8 +57,6 @@ class OverCoderHomeWindowFactory : ToolWindowFactory {
     }
 }
 
-
-
 /**
  * Over Code 聊天主界面
  */
@@ -68,8 +75,8 @@ fun OverCodeChatUI(project: Project? = null) {
     }
 
     // ViewModel
-    val viewModel = remember(dbService, llmService) {
-        HomeViewModel(dbService, llmService)
+    val viewModel = remember(project, dbService, llmService) {
+        HomeViewModel(project, dbService, llmService)
     }
     
     // 注册 ViewModel 到 Project Service，以便 Action 可以访问
@@ -83,6 +90,11 @@ fun OverCodeChatUI(project: Project? = null) {
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+
+    // 初始化加载
+    LaunchedEffect(project) {
+        viewModel.loadModelConfigs()
+    }
 
     // 加载历史消息
     LaunchedEffect(viewModel.currentSessionId) {
@@ -121,6 +133,20 @@ fun OverCodeChatUI(project: Project? = null) {
                 },
                 actions = {
                     IconButton(onClick = {
+                        if (viewModel.showHistory) {
+                            viewModel.showHistory = false
+                        } else {
+                            viewModel.loadSessions()
+                            viewModel.showHistory = true
+                        }
+                    }) {
+                        Icon(
+                            imageVector = if (viewModel.showHistory) Icons.Default.Edit else Icons.Default.List,
+                            contentDescription = "历史记录",
+                            tint = if (viewModel.showHistory) primaryColor else textSecondaryColor
+                        )
+                    }
+                    IconButton(onClick = {
                         viewModel.createNewSession()
                     }) {
                         Icon(
@@ -138,6 +164,17 @@ fun OverCodeChatUI(project: Project? = null) {
                             tint = textSecondaryColor
                         )
                     }
+                    IconButton(onClick = {
+                        project?.let {
+                            ShowSettingsUtil.getInstance().showSettingsDialog(it, ModelConfigurable::class.java)
+                        }
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "设置",
+                            tint = textSecondaryColor
+                        )
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = surfaceColor,
@@ -145,25 +182,40 @@ fun OverCodeChatUI(project: Project? = null) {
                 )
             )
 
-            // 中央对话区域
+            // 中央区域
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
             ) {
-                if (viewModel.messages.isEmpty()) {
-                    // 空状态 - 显示欢迎界面
-                    WelcomeScreen()
+                if (viewModel.showHistory) {
+                    HistoryScreen(
+                        viewModel = viewModel,
+                        backgroundColor = backgroundColor,
+                        surfaceColor = surfaceColor,
+                        textPrimaryColor = textPrimaryColor,
+                        textSecondaryColor = textSecondaryColor,
+                        primaryColor = primaryColor
+                    )
                 } else {
-                    // 消息列表
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(1.dp),
-                        verticalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        items(viewModel.messages) { message ->
-                            MessageBubble(message)
+                    if (viewModel.messages.isEmpty()) {
+                        // 空状态 - 显示欢迎界面
+                        WelcomeScreen()
+                    } else {
+                        // 消息列表
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(1.dp),
+                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            items(viewModel.messages) { message ->
+                                MessageBubble(
+                                    message = message,
+                                    onCopyCode = { viewModel.copyToClipboard(it) },
+                                    onInsertCode = { viewModel.insertCodeAtCursor(it) }
+                                )
+                            }
                         }
                     }
                 }
@@ -189,6 +241,11 @@ fun OverCodeChatUI(project: Project? = null) {
                         }
                     }
                 },
+                activeModelName = viewModel.activeModel?.name ?: "选择模型",
+                chatMode = viewModel.chatMode,
+                onModeChange = { viewModel.chatMode = it },
+                modelConfigs = viewModel.modelConfigs,
+                onModelSelect = { viewModel.setActiveModel(it) },
                 backgroundColor = surfaceColor,
                 textColor = textPrimaryColor
             )
@@ -196,3 +253,115 @@ fun OverCodeChatUI(project: Project? = null) {
     }
 }
 
+/**
+ * 历史会话列表界面
+ */
+@Composable
+fun HistoryScreen(
+    viewModel: HomeViewModel,
+    backgroundColor: Color,
+    surfaceColor: Color,
+    textPrimaryColor: Color,
+    textSecondaryColor: Color,
+    primaryColor: Color
+) {
+    val dateFormat = remember { SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(backgroundColor)
+            .padding(8.dp)
+    ) {
+        Text(
+            text = "历史会话",
+            fontSize = 16.sp,
+            color = textPrimaryColor,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
+        if (viewModel.sessions.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(text = "暂无历史记录", color = textSecondaryColor)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(viewModel.sessions) { session ->
+                    HistoryItem(
+                        session = session,
+                        isSelected = session.sessionId == viewModel.currentSessionId,
+                        dateFormat = dateFormat,
+                        surfaceColor = surfaceColor,
+                        textPrimaryColor = textPrimaryColor,
+                        textSecondaryColor = textSecondaryColor,
+                        primaryColor = primaryColor,
+                        onClick = {
+                            viewModel.loadMessages(session.sessionId)
+                            viewModel.showHistory = false
+                        },
+                        onDelete = {
+                            viewModel.deleteSession(session.sessionId)
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun HistoryItem(
+    session: SessionInfo,
+    isSelected: Boolean,
+    dateFormat: SimpleDateFormat,
+    surfaceColor: Color,
+    textPrimaryColor: Color,
+    textSecondaryColor: Color,
+    primaryColor: Color,
+    onClick: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) surfaceColor.copy(alpha = 0.8f) else surfaceColor
+        ),
+        border = if (isSelected) CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(primaryColor)) else null
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(12.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = session.title,
+                    fontSize = 14.sp,
+                    color = textPrimaryColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = dateFormat.format(Date(session.updatedAt)),
+                    fontSize = 12.sp,
+                    color = textSecondaryColor
+                )
+            }
+            IconButton(onClick = onDelete) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "删除会话",
+                    tint = textSecondaryColor,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
