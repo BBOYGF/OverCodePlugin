@@ -58,7 +58,7 @@ dependencies {
     implementation(libs.sqlite.jdbc)
 
     // JSON 处理
-    implementation("org.json:json:20231013")
+    implementation("org.json:json:20251224")
 
     // IntelliJ 平台相关的依赖配置
     intellijPlatform {
