@@ -1,5 +1,6 @@
 package com.github.bboygf.over_code.actions
 
+import com.github.bboygf.over_code.services.ChatDatabaseService
 import com.github.bboygf.over_code.ui.home.HomeViewModel
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -31,16 +32,27 @@ class AskAIAction : AnAction() {
         val fileName = psiFile?.name ?: "未知文件"
         val language = psiFile?.language?.displayName ?: "未知语言"
         
-        // 构建发送给AI的消息，添加"解释代码"前缀
-        val messageToAI = buildString {
-            appendLine("请帮我解释一下这段代码的意思：")
-            appendLine()
-            appendLine("文件名：$fileName")
-            appendLine("语言：$language")
-            appendLine()
-            appendLine("```$language")
-            appendLine(selectedText)
-            appendLine("```")
+        // 使用可配置的 Prompt 模板
+        val dbService = ChatDatabaseService.getInstance(project)
+        val messageToAI = try {
+            dbService.renderPrompt("explain_code", mapOf(
+                "code" to selectedText,
+                "fileName" to fileName,
+                "language" to language
+            ))
+        } catch (ex: Exception) {
+            LOG.warn("使用默认 Prompt，原因: ${ex.message}")
+            // 如果 Prompt 模板不存在，使用默认文本
+            buildString {
+                appendLine("请帮我解释一下这段代码的意思：")
+                appendLine()
+                appendLine("文件名：$fileName")
+                appendLine("语言：$language")
+                appendLine()
+                appendLine("```$language")
+                appendLine(selectedText)
+                appendLine("```")
+            }
         }
         
         LOG.info("准备发送代码到聊天窗口，长度: ${selectedText.length}")

@@ -46,6 +46,20 @@ object ModelConfigs : IntIdTable("model_configs") {
 }
 
 /**
+ * Prompt 模板数据库表定义
+ */
+object PromptTemplates : IntIdTable("prompt_templates") {
+    val promptId = varchar("prompt_id", 50).uniqueIndex()
+    val name = varchar("name", 100)
+    val key = varchar("key", 50).uniqueIndex()
+    val template = text("template")
+    val description = varchar("description", 500).default("")
+    val isBuiltIn = bool("is_built_in").default(false)
+    val createdAt = long("created_at")
+    val updatedAt = long("updated_at")
+}
+
+/**
  * 聊天数据库服务
  */
 @Service(Service.Level.PROJECT)
@@ -71,7 +85,8 @@ class ChatDatabaseService(private val project: Project) {
 
         // 初始化数据库表（自动创建表和新增列）
         transaction(database) {
-            SchemaUtils.createMissingTablesAndColumns(ChatMessages, ChatSessions, ModelConfigs)
+            SchemaUtils.createMissingTablesAndColumns(ChatMessages, ChatSessions, ModelConfigs, PromptTemplates)
+            initializeDefaultPrompts()
         }
     }
 
@@ -363,6 +378,216 @@ class ChatDatabaseService(private val project: Project) {
         return "model_${System.currentTimeMillis()}_${(1000..9999).random()}"
     }
 
+    // ==================== Prompt 模板管理 ====================
+
+    /**
+     * 初始化默认 Prompt 模板
+     */
+    private fun initializeDefaultPrompts() {
+        val existingPrompts = PromptTemplates.selectAll().count()
+        if (existingPrompts > 0) return
+
+        val defaultPrompts = listOf(
+            PromptInfo(
+                key = "explain_code",
+                name = "解释代码",
+                template = """请帮我解释一下这段代码的意思：
+
+文件名：{{fileName}}
+语言：{{language}}
+
+```{{language}}
+{{code}}
+```""",
+                description = "用于解释选中的代码片段",
+                isBuiltIn = true
+            ),
+            PromptInfo(
+                key = "translate_chat",
+                name = "翻译（聊天窗口）",
+                template = """请帮我将以下内容翻译成中文。如果内容是代码，请解释代码的含义并翻译其中的注释或字符串：
+{{text}}""",
+                description = "将选中内容翻译并在聊天窗口显示",
+                isBuiltIn = true
+            ),
+            PromptInfo(
+                key = "translate_quick",
+                name = "快速翻译（弹窗）",
+                template = "你是一个专业的翻译助手。请直接输出以下内容的中文翻译结果，不需要任何开场白或解释：\n\n{{text}}",
+                description = "快速翻译并以弹窗形式显示结果",
+                isBuiltIn = true
+            ),
+            PromptInfo(
+                key = "refactor_code",
+                name = "重构代码",
+                template = """请帮我重构以下代码，使其更加简洁、高效和易于维护：
+
+```{{language}}
+{{code}}
+```
+
+请提供重构后的代码和改进说明。""",
+                description = "重构代码使其更优雅",
+                isBuiltIn = false
+            ),
+            PromptInfo(
+                key = "find_bugs",
+                name = "查找Bug",
+                template = """请仔细检查以下代码，找出可能存在的 Bug、性能问题或潜在风险：
+
+```{{language}}
+{{code}}
+```
+
+请列出发现的问题和修复建议。""",
+                description = "检查代码中的潜在问题",
+                isBuiltIn = false
+            ),
+            PromptInfo(
+                key = "add_comments",
+                name = "添加注释",
+                template = """请为以下代码添加详细的注释，包括函数说明、参数说明和关键逻辑说明：
+
+```{{language}}
+{{code}}
+```
+
+请返回带注释的完整代码。""",
+                description = "为代码添加详细注释",
+                isBuiltIn = false
+            ),
+            PromptInfo(
+                key = "generate_tests",
+                name = "生成单元测试",
+                template = """请为以下代码生成完整的单元测试：
+
+```{{language}}
+{{code}}
+```
+
+请包含正常场景、边界情况和异常处理的测试用例。""",
+                description = "自动生成单元测试代码",
+                isBuiltIn = false
+            )
+        )
+
+        defaultPrompts.forEach { prompt ->
+            addPromptTemplate(prompt)
+        }
+    }
+
+    /**
+     * 添加 Prompt 模板
+     */
+    fun addPromptTemplate(prompt: PromptInfo): String {
+        val promptId = prompt.promptId.ifEmpty { generatePromptId() }
+        transaction(database) {
+            val now = System.currentTimeMillis()
+            PromptTemplates.insert {
+                it[PromptTemplates.promptId] = promptId
+                it[name] = prompt.name
+                it[key] = prompt.key
+                it[template] = prompt.template
+                it[description] = prompt.description
+                it[isBuiltIn] = prompt.isBuiltIn
+                it[createdAt] = now
+                it[updatedAt] = now
+            }
+        }
+        return promptId
+    }
+
+    /**
+     * 更新 Prompt 模板
+     */
+    fun updatePromptTemplate(promptId: String, prompt: PromptInfo) {
+        transaction(database) {
+            PromptTemplates.update({ PromptTemplates.promptId eq promptId }) {
+                it[name] = prompt.name
+                it[key] = prompt.key
+                it[template] = prompt.template
+                it[description] = prompt.description
+                it[updatedAt] = System.currentTimeMillis()
+            }
+        }
+    }
+
+    /**
+     * 删除 Prompt 模板
+     */
+    fun deletePromptTemplate(promptId: String) {
+        transaction(database) {
+            PromptTemplates.deleteWhere { PromptTemplates.promptId eq promptId }
+        }
+    }
+
+    /**
+     * 获取所有 Prompt 模板
+     */
+    fun getAllPromptTemplates(): List<PromptInfo> {
+        return transaction(database) {
+            PromptTemplates.selectAll()
+                .orderBy(PromptTemplates.createdAt to SortOrder.ASC)
+                .map { row ->
+                    PromptInfo(
+                        promptId = row[PromptTemplates.promptId],
+                        name = row[PromptTemplates.name],
+                        key = row[PromptTemplates.key],
+                        template = row[PromptTemplates.template],
+                        description = row[PromptTemplates.description],
+                        isBuiltIn = row[PromptTemplates.isBuiltIn],
+                        createdAt = row[PromptTemplates.createdAt],
+                        updatedAt = row[PromptTemplates.updatedAt]
+                    )
+                }
+        }
+    }
+
+    /**
+     * 根据 Key 获取 Prompt 模板
+     */
+    fun getPromptTemplateByKey(key: String): PromptInfo? {
+        return transaction(database) {
+            PromptTemplates.selectAll()
+                .where { PromptTemplates.key eq key }
+                .limit(1)
+                .firstOrNull()
+                ?.let { row ->
+                    PromptInfo(
+                        promptId = row[PromptTemplates.promptId],
+                        name = row[PromptTemplates.name],
+                        key = row[PromptTemplates.key],
+                        template = row[PromptTemplates.template],
+                        description = row[PromptTemplates.description],
+                        isBuiltIn = row[PromptTemplates.isBuiltIn],
+                        createdAt = row[PromptTemplates.createdAt],
+                        updatedAt = row[PromptTemplates.updatedAt]
+                    )
+                }
+        }
+    }
+
+    /**
+     * 渲染 Prompt 模板（替换占位符）
+     */
+    fun renderPrompt(key: String, variables: Map<String, String>): String {
+        val template = getPromptTemplateByKey(key)?.template 
+            ?: throw IllegalArgumentException("Prompt template not found: $key")
+        
+        var result = template
+        variables.forEach { (varKey, value) ->
+            result = result.replace("{{$varKey}}", value)
+        }
+        return result
+    }
+
+    /**
+     * 生成唯一 Prompt ID
+     */
+    private fun generatePromptId(): String {
+        return "prompt_${System.currentTimeMillis()}_${(1000..9999).random()}"
+    }
+
     companion object {
         fun getInstance(project: Project): ChatDatabaseService {
             return project.getService(ChatDatabaseService::class.java)
@@ -391,6 +616,20 @@ data class ModelConfigInfo(
     val apiKey: String = "",
     val modelName: String,
     val isActive: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+/**
+ * Prompt 模板信息数据类
+ */
+data class PromptInfo(
+    val promptId: String = "",
+    val name: String,
+    val key: String,
+    val template: String,
+    val description: String = "",
+    val isBuiltIn: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )

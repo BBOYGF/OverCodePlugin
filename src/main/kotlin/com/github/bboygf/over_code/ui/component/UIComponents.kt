@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.text.font.FontFamily
@@ -400,7 +401,7 @@ fun BottomInputArea(
                     modifier = Modifier
                         .fillMaxWidth()
                         .onKeyEvent {
-                            if (it.key == Key.Enter) {
+                            if (it.key == Key.Enter && !it.isShiftPressed) {
                                 onSend()
                                 return@onKeyEvent true
                             } else {

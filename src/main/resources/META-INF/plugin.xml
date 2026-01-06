@@ -10,6 +10,8 @@
     <!-- 依赖声明。com.intellij.modules.platform 表示该插件依赖于所有 IntelliJ IDE 共有的基础平台功能。 -->
     <depends>com.intellij.modules.platform</depends>
 
+    <depends>com.intellij.modules.java</depends>
+
     <!-- 国际化资源包。指向 src/main/resources/messages/MyBundle.properties，用于管理多语言文案。 -->
     <resource-bundle>messages.MyBundle</resource-bundle>
 
@@ -25,43 +27,40 @@
         <!-- 注册一个在项目打开并启动完成后执行的任务 -->
         <postStartupActivity implementation="com.github.bboygf.over_code.startup.InitProjectActivity" />
         
-        <!-- 注册模型配置设置页面 -->
+        <!-- 注册统一配置设置页面 -->
         <projectConfigurable
                 parentId="tools"
                 provider="com.github.bboygf.over_code.ui.model_config.ModelConfigurableProvider"
                 id="com.github.bboygf.over_code.ui.model_config.ModelConfigurable"
-                displayName="Over Code 模型配置"/>
+                displayName="Over Code 配置"/>
     </extensions>
 
     <!-- 动作 (Actions) 注册。用于声明菜单项、工具栏按钮、快捷键操作等。 -->
     <actions>
 
+        <!-- AI 助手动态菜单组 - 根据 Prompt 模板动态生成子菜单 -->
+        <group id="com.github.bboygf.over_code.AIAssistantGroup"
+               class="com.github.bboygf.over_code.actions.AIAssistantActionGroup"
+               text="Over Code AI 助手"
+               description="使用 AI 处理选中的代码"
+               popup="true">
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+        </group>
         
         <!-- 询问AI - 将选中的代码发送到聊天窗口 -->
         <action id="com.github.bboygf.over_code.AskAIAction"
                 class="com.github.bboygf.over_code.actions.AskAIAction"
                 text="询问 AI (解释代码)"
                 description="将选中的代码发送到 Over Code 聊天窗口，让 AI 帮你解释代码的意思">
-            <!-- 添加到编辑器代码区的右键菜单（置顶显示） -->
-            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
-            <!-- 添加快捷键：Ctrl+Alt+A -->
+            <!-- 只绑定快捷键，不显示在菜单中 -->
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt A"/>
         </action>
 
-        <!-- 翻译 - 送入聊天窗口 -->
-        <action id="com.github.bboygf.over_code.TranslateInChatAction"
-                class="com.github.bboygf.over_code.actions.TranslateInChatAction"
-                text="翻译 (发送到聊天)"
-                description="将选中的文本发送到 Over Code 聊天窗口进行翻译">
-            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="com.github.bboygf.over_code.AskAIAction"/>
-        </action>
-
-        <!-- 翻译 - 弹窗显示 -->
+        <!-- 快捷翻译 - 弹窗显示 -->
         <action id="com.github.bboygf.over_code.QuickTranslateAction"
                 class="com.github.bboygf.over_code.actions.QuickTranslateAction"
                 text="快速翻译 (弹窗显示)"
                 description="在选中位置下方弹出翻译结果">
-            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="com.github.bboygf.over_code.TranslateInChatAction"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt T"/>
         </action>
     </actions>

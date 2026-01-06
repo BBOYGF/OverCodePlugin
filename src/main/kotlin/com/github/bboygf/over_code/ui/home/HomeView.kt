@@ -41,6 +41,10 @@ import javax.swing.JComponent
  */
 class OverCoderHomeWindowFactory : ToolWindowFactory {
 
+    init {
+        System.setProperty("skiko.renderApi", "SOFTWARE")
+    }
+
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val composePanel = createComposePanel(project)
         val contentFactory = ContentFactory.getInstance()

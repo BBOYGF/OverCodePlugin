@@ -2,6 +2,7 @@ package com.github.bboygf.over_code.actions
 
 import com.github.bboygf.over_code.llm.LLMMessage
 import com.github.bboygf.over_code.llm.LLMService
+import com.github.bboygf.over_code.services.ChatDatabaseService
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
@@ -22,10 +23,15 @@ class TranslateInChatAction : AnAction() {
         val editor = e.getData(CommonDataKeys.EDITOR) ?: return
         val selectedText = editor.selectionModel.selectedText ?: return
         if (selectedText.isBlank()) return
-        val messageToAI = """
-            请帮我将以下内容翻译成中文。如果内容是代码，请解释代码的含义并翻译其中的注释或字符串：
+        
+        val dbService = ChatDatabaseService.getInstance(project)
+        val messageToAI = try {
+            dbService.renderPrompt("translate_chat", mapOf("text" to selectedText))
+        } catch (ex: Exception) {
+            """请帮我将以下内容翻译成中文。如果内容是代码，请解释代码的含义并翻译其中的注释或字符串：
         $selectedText
         """.trimIndent()
+        }
         
         val toolWindowManager = ToolWindowManager.getInstance(project)
         val toolWindow = toolWindowManager.getToolWindow("Over Code")
@@ -67,7 +73,14 @@ class QuickTranslateAction : AnAction() {
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 val llmService = LLMService.getInstance(project)
-                val prompt = "你是一个专业的翻译助手。请直接输出以下内容的中文翻译结果，不需要任何开场白或解释：\n\n$selectedText"
+                val dbService = ChatDatabaseService.getInstance(project)
+                
+                val prompt = try {
+                    dbService.renderPrompt("translate_quick", mapOf("text" to selectedText))
+                } catch (ex: Exception) {
+                    "你是一个专业的翻译助手。请直接输出以下内容的中文翻译结果，不需要任何开场白或解释：\n\n$selectedText"
+                }
+                
                 val result = llmService.chat(listOf(LLMMessage("user", prompt)))
                 
                 // 3. 回到 UI 线程更新结果

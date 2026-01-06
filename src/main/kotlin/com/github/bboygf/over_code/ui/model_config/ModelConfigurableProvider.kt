@@ -12,3 +12,12 @@ class ModelConfigurableProvider(private val project: Project) : ConfigurableProv
         return ModelConfigurable(project)
     }
 }
+
+/**
+ * Prompt 配置页面提供者
+ */
+class PromptConfigurableProvider(private val project: Project) : ConfigurableProvider() {
+    override fun createConfigurable(): Configurable {
+        return com.github.bboygf.over_code.ui.prompt_config.PromptConfigurable(project)
+    }
+}

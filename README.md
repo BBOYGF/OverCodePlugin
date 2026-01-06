@@ -4,7 +4,6 @@ OverCode 是一款深度集成于 IntelliJ IDEA 的插件，旨在赋予开发�
 "Don't just write code, OverCode it." —— 摆脱云端束缚，通过自定义 Prompt 和本地算力，打造最懂你的编程助手。
 
 ## 详情
-
 <!-- Plugin description -->
 本地私有化 (Ollama Integrated): 完美支持本地运行的 Ollama 模型（如 Llama 3, DeepSeek, CodeQwen 等）。代码不离机，隐私零风险。
 
@@ -20,7 +19,6 @@ Prompt 自由调配 (Prompt Playground): * 深度自定义： 内置 Prompt 编�
 
 无缝注入： 支持将 AI 生成的代码一键覆盖或插入当前编辑器。
 <!-- Plugin description end -->
-
 ## 安装
 
 1. 准备环境

@@ -2,6 +2,7 @@ import org.jetbrains.changelog.Changelog
 import org.jetbrains.changelog.markdownToHTML
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 
+
 // 插件块：引入构建项目所需的 Gradle 插件
 plugins {
     id("java") // Java 语言支持
@@ -23,6 +24,11 @@ kotlin {
     jvmToolchain(21)
 }
 
+// 禁用 Gradle 版本警告（临时方案）
+tasks.withType<JavaCompile> {
+    options.compilerArgs.add("-Xlint:none")
+}
+
 // 配置依赖仓库
 repositories {
     mavenCentral()
@@ -35,23 +41,22 @@ repositories {
     }
 }
 
-// 依赖管理：使用 Gradle 的 Version Catalog (libs.versions.toml)
+
 dependencies {
+
     testImplementation(libs.junit)
     testImplementation(libs.opentest4j)
-
-    // Compose Desktop 依赖
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
     implementation(compose.ui)
     implementation(compose.foundation)
-    
+
     // Exposed 数据库框架
     implementation(libs.exposed.core)
     implementation(libs.exposed.dao)
     implementation(libs.exposed.jdbc)
     implementation(libs.sqlite.jdbc)
-    
+
     // JSON 处理
     implementation("org.json:json:20231013")
 
@@ -69,6 +74,8 @@ dependencies {
         // 引入 gradle.properties 中定义的内置模块依赖
         bundledModules(providers.gradleProperty("platformBundledModules").map { it.split(',') })
 
+        bundledModules(listOf("intellij.libraries.skiko"))
+
         // 引入测试框架
         testFramework(TestFrameworkType.Platform)
     }
@@ -78,7 +85,7 @@ dependencies {
 intellijPlatform {
     // 禁用字节码增强，避免下载 java-compiler-ant-tasks 依赖
     instrumentCode = false
-    
+
     pluginConfiguration {
         // 插件名称
         name = providers.gradleProperty("pluginName")
@@ -128,7 +135,13 @@ intellijPlatform {
     publishing {
         token = providers.environmentVariable("PUBLISH_TOKEN")
         // 根据版本号中的后缀（如 -alpha）自动决定发布渠道
-        channels = providers.gradleProperty("pluginVersion").map { listOf(it.substringAfter('-', "").substringBefore('.').ifEmpty { "default" }) }
+        channels = providers.gradleProperty("pluginVersion")
+            .map {
+                listOf(
+                    it.substringAfter('-', "")
+                        .substringBefore('.')
+                        .ifEmpty { "default" })
+            }
     }
 
     // 插件验证配置：检查插件是否与目标 IDE 版本兼容
@@ -158,6 +171,11 @@ kover {
 
 // 自定义 Gradle 任务
 tasks {
+    // 禁用 buildSearchableOptions 任务，解决 Locale 导致的构建失败问题
+    buildSearchableOptions {
+        enabled = false
+    }
+
     // 设置 Gradle Wrapper 的版本
     wrapper {
         gradleVersion = providers.gradleProperty("gradleVersion").get()
