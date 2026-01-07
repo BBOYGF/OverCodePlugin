@@ -1,19 +1,17 @@
 package com.github.bboygf.over_code.actions
 
 import com.github.bboygf.over_code.services.ChatDatabaseService
-import com.github.bboygf.over_code.ui.home.HomeViewModel
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
-import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.wm.ToolWindowManager
 
 /**
- * 将选中的代码发送到聊天窗口询问AI
+ * 将选中的代码插入到聊天窗口输入框，不自动提交
  */
-class AskAIAction : AnAction() {
-    private val LOG = Logger.getInstance(AskAIAction::class.java)
+class InsertToAIAction : AnAction() {
+    private val LOG = Logger.getInstance(InsertToAIAction::class.java)
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
@@ -41,7 +39,7 @@ class AskAIAction : AnAction() {
                 "language" to language
             ))
         } catch (ex: Exception) {
-            LOG.warn("使用默认 Prompt，原因: ${ex.message}")
+            LOG.warn("使用默认格式，原因: ${ex.message}")
             // 如果 Prompt 模板不存在，使用默认文本
             buildString {
                 appendLine("请帮我解释一下这段代码的意思：")
@@ -55,7 +53,7 @@ class AskAIAction : AnAction() {
             }
         }
         
-        LOG.info("准备发送代码到聊天窗口，长度: ${selectedText.length}")
+        LOG.info("准备插入代码到聊天输入框，长度: ${selectedText.length}")
         
         // 打开或激活 Over Code 工具窗口
         val toolWindowManager = ToolWindowManager.getInstance(project)
@@ -64,9 +62,9 @@ class AskAIAction : AnAction() {
         if (toolWindow != null) {
             // 激活工具窗口
             toolWindow.activate {
-                // 工具窗口激活后，发送消息
+                // 工具窗口激活后，插入文本到输入框
                 project.getService(ChatViewModelHolder::class.java)
-                    ?.sendMessageToChat(messageToAI)
+                    ?.insertTextToChat(messageToAI)
             }
         }
     }
@@ -76,21 +74,5 @@ class AskAIAction : AnAction() {
         val editor = e.getData(CommonDataKeys.EDITOR)
         val hasSelection = editor?.selectionModel?.hasSelection() ?: false
         e.presentation.isEnabled = hasSelection
-    }
-}
-
-/**
- * 用于在 Project 范围内持有 ChatViewModel 实例的服务
- */
-@Service(Service.Level.PROJECT)
-class ChatViewModelHolder {
-    var viewModel: HomeViewModel? = null
-    
-    fun sendMessageToChat(message: String) {
-        viewModel?.sendMessageFromExternal(message)
-    }
-    
-    fun insertTextToChat(text: String) {
-        viewModel?.insertTextToInput(text)
     }
 }

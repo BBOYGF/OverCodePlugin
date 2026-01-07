@@ -10,6 +10,7 @@ import com.github.bboygf.over_code.services.ChatDatabaseService
 import com.github.bboygf.over_code.services.ModelConfigInfo
 import com.github.bboygf.over_code.services.SessionInfo
 import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.editor.EditorModificationUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -222,6 +223,25 @@ class HomeViewModel(
         }
     }
 
+    // 用于暴露给外部修改输入框内容的回调
+    var onInputTextChange: ((String) -> Unit)? = null
+    var getInputText: (() -> String)? = null
+
+    /**
+     * 从外部（如Action）插入文本到输入框，不自动发送
+     * 如果输入框有内容，则在光标位置插入；否则直接设置
+     */
+    fun insertTextToInput(text: String) {
+        val currentText = getInputText?.invoke() ?: ""
+        val newText = if (currentText.isEmpty()) {
+            text
+        } else {
+            // 如果已有内容，在末尾添加
+            "$currentText\n\n$text"
+        }
+        onInputTextChange?.invoke(newText)
+    }
+
     /**
      * 复制文本到剪贴板
      */
@@ -236,14 +256,9 @@ class HomeViewModel(
     fun insertCodeAtCursor(code: String) {
         val currentProject = project ?: return
         val editor = FileEditorManager.getInstance(currentProject).selectedTextEditor ?: return
-        val document = editor.document
-        val caretModel = editor.caretModel
-        val offset = caretModel.offset
-
         WriteCommandAction.runWriteCommandAction(currentProject) {
-            document.insertString(offset, code)
-            // 移动光标到插入内容之后
-            caretModel.moveToOffset(offset + code.length)
+            // 一行代码搞定：插入字符串，自动处理光标移动和选区替换
+            EditorModificationUtil.insertStringAtCaret(editor, code)
         }
     }
 }

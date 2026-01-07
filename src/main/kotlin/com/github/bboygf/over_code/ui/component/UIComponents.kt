@@ -7,7 +7,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.onClick
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -26,11 +28,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -342,6 +349,7 @@ fun BottomInputArea(
 ) {
     var modeMenuExpanded by remember { mutableStateOf(false) }
     var modelMenuExpanded by remember { mutableStateOf(false) }
+    var focused by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -360,6 +368,14 @@ fun BottomInputArea(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+
+                    .border(
+                        3.dp, if (focused) {
+                            Color(0xff3574F0)
+                        } else {
+                            Color(0xff393B40)
+                        }, RoundedCornerShape(12.dp)
+                    )
                     .padding(8.dp)
             ) {
                 // 顶部：添加上下文按钮
@@ -400,12 +416,13 @@ fun BottomInputArea(
                     onValueChange = onInputChange,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .onKeyEvent {
-                            if (it.key == Key.Enter && !it.isShiftPressed) {
+                        .onPreviewKeyEvent {
+                            println("key:${it.key} type:${it.type} isShiftPressed:${it.isShiftPressed}")
+                            if (it.key == Key.Enter && it.type == KeyEventType.KeyUp && !it.isShiftPressed) {
                                 onSend()
-                                return@onKeyEvent true
+                                return@onPreviewKeyEvent true
                             } else {
-                                return@onKeyEvent false
+                                return@onPreviewKeyEvent false
                             }
                         },
                     placeholder = {

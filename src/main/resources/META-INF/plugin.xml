@@ -38,6 +38,15 @@
     <!-- 动作 (Actions) 注册。用于声明菜单项、工具栏按钮、快捷键操作等。 -->
     <actions>
 
+        <!-- 插入代码到聊天框 - 不自动提交（测试：直接显示在菜单中） -->
+        <action id="com.github.bboygf.over_code.InsertToAIAction"
+                class="com.github.bboygf.over_code.actions.InsertToAIAction"
+                text="Over Code: 插入到聊天框"
+                description="将选中的代码插入到 Over Code 聊天输入框，不自动提交">
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt I"/>
+        </action>
+
         <!-- AI 助手动态菜单组 - 根据 Prompt 模板动态生成子菜单 -->
         <group id="com.github.bboygf.over_code.AIAssistantGroup"
                class="com.github.bboygf.over_code.actions.AIAssistantActionGroup"

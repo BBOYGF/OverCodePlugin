@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposePanel
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -94,6 +95,16 @@ fun OverCodeChatUI(project: Project? = null) {
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    
+    // 注册输入框文本变更回调
+    LaunchedEffect(viewModel) {
+        viewModel.onInputTextChange = { text ->
+            inputText = text
+        }
+        viewModel.getInputText = {
+            inputText
+        }
+    }
 
     // 初始化加载
     LaunchedEffect(project) {
@@ -234,7 +245,6 @@ fun OverCodeChatUI(project: Project? = null) {
                     if (inputText.isNotBlank()) {
                         val userInput = inputText
                         inputText = ""
-                        
                         viewModel.sendMessage(userInput) {
                             // 自动滚动到底部
                             coroutineScope.launch {
