@@ -1,12 +1,14 @@
 package com.github.bboygf.over_code.ui.home
 
 import androidx.compose.desktop.ui.tooling.preview.Preview
+import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -83,7 +85,7 @@ fun OverCodeChatUI(project: Project? = null) {
     val viewModel = remember(project, dbService, llmService) {
         HomeViewModel(project, dbService, llmService)
     }
-    
+
     // 注册 ViewModel 到 Project Service，以便 Action 可以访问
     LaunchedEffect(project, viewModel) {
         project?.getService(ChatViewModelHolder::class.java)?.let { holder ->
@@ -92,17 +94,17 @@ fun OverCodeChatUI(project: Project? = null) {
     }
 
     // UI状态
-    var inputText by remember { mutableStateOf("") }
+    var inputText by remember { mutableStateOf(TextFieldValue("")) }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-    
+
     // 注册输入框文本变更回调
     LaunchedEffect(viewModel) {
         viewModel.onInputTextChange = { text ->
-            inputText = text
+            inputText = TextFieldValue(text)
         }
         viewModel.getInputText = {
-            inputText
+            inputText.text
         }
     }
 
@@ -114,7 +116,18 @@ fun OverCodeChatUI(project: Project? = null) {
     // 加载历史消息
     LaunchedEffect(viewModel.currentSessionId) {
         viewModel.loadMessages(viewModel.currentSessionId)
+        if (viewModel.messages.isNotEmpty()) {
+            listState.animateScrollToItem(viewModel.messages.size - 1)
+        }
     }
+    LaunchedEffect(viewModel.scrollEvents) {
+        viewModel.scrollEvents.collect { index ->
+            if (index >= 0) {
+                listState.animateScrollToItem(index)
+            }
+        }
+    }
+
 
     // 深色主题配色
     val backgroundColor = Color(0xFF2B2B2B)
@@ -222,7 +235,8 @@ fun OverCodeChatUI(project: Project? = null) {
                             state = listState,
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(1.dp),
-                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                            verticalArrangement = Arrangement.spacedBy(5.dp),
+                            userScrollEnabled = true
                         ) {
                             items(viewModel.messages) { message ->
                                 MessageBubble(
@@ -232,6 +246,13 @@ fun OverCodeChatUI(project: Project? = null) {
                                 )
                             }
                         }
+                        // 2. 添加滚动条
+                        VerticalScrollbar(
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd) // 居右对齐
+                                .fillMaxHeight(),            // 占满高度
+                            adapter = rememberScrollbarAdapter(scrollState = listState) // 关键：适配 LazyListState
+                        )
                     }
                 }
             }
@@ -242,10 +263,10 @@ fun OverCodeChatUI(project: Project? = null) {
                 onInputChange = { inputText = it },
                 isLoading = viewModel.isLoading,
                 onSend = {
-                    if (inputText.isNotBlank()) {
+                    if (inputText.text.isNotBlank()) {
                         val userInput = inputText
-                        inputText = ""
-                        viewModel.sendMessage(userInput) {
+                        inputText = TextFieldValue("")
+                        viewModel.sendMessage(userInput.text) {
                             // 自动滚动到底部
                             coroutineScope.launch {
                                 if (viewModel.messages.isNotEmpty()) {
@@ -261,7 +282,9 @@ fun OverCodeChatUI(project: Project? = null) {
                 modelConfigs = viewModel.modelConfigs,
                 onModelSelect = { viewModel.setActiveModel(it) },
                 backgroundColor = surfaceColor,
-                textColor = textPrimaryColor
+                textColor = textPrimaryColor,
+                isChecked = viewModel.loadHistory,
+                onLoadHistoryChange = { viewModel.onLoadHistoryChange(it) }
             )
         }
     }
@@ -345,7 +368,8 @@ fun HistoryItem(
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) surfaceColor.copy(alpha = 0.8f) else surfaceColor
         ),
-        border = if (isSelected) CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(primaryColor)) else null
+        border = if (isSelected) CardDefaults.outlinedCardBorder()
+            .copy(brush = androidx.compose.ui.graphics.SolidColor(primaryColor)) else null
     ) {
         Row(
             modifier = Modifier

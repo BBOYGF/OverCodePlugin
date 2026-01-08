@@ -1,5 +1,6 @@
 package com.github.bboygf.over_code.ui.home
 
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -16,6 +17,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.fileEditor.FileEditorManager
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 
@@ -31,11 +34,14 @@ class HomeViewModel(
     // UI状态
     var messages by mutableStateOf(listOf<ChatMessage>())
         private set
-    
+
     var currentSessionId by mutableStateOf("default")
         private set
-    
+
     var isLoading by mutableStateOf(false)
+        private set
+
+    var loadHistory by mutableStateOf(true)
         private set
 
     var sessions by mutableStateOf(listOf<SessionInfo>())
@@ -51,9 +57,18 @@ class HomeViewModel(
         private set
 
     var chatMode by mutableStateOf("计划模式") // "计划模式" 或 "执行模式"
-    
+
+    // 使用 SharedFlow 发送单次执行的事件
+    private val _scrollEvents = MutableSharedFlow<Int>()
+    val scrollEvents = _scrollEvents.asSharedFlow()
+
     private val ioScope = CoroutineScope(Dispatchers.IO)
-    
+
+    // 2. 暴露事件处理函数
+    fun onLoadHistoryChange(newValue: Boolean) {
+        loadHistory = newValue
+    }
+
     /**
      * 加载所有模型配置并获取当前激活的模型
      */
@@ -89,7 +104,7 @@ class HomeViewModel(
         currentSessionId = sessionId
         messages = dbService?.loadMessages(sessionId) ?: emptyList()
     }
-    
+
     /**
      * 创建新会话
      */
@@ -112,7 +127,7 @@ class HomeViewModel(
             currentSessionId = "default"
         }
     }
-    
+
     /**
      * 清空当前会话
      */
@@ -120,32 +135,38 @@ class HomeViewModel(
         dbService?.clearMessages(currentSessionId)
         messages = emptyList()
     }
-    
+
     /**
      * 发送用户消息并获取AI响应
      */
     fun sendMessage(userInput: String, onScrollToBottom: () -> Unit) {
         if (userInput.isBlank() || isLoading) return
-        
+
         isLoading = true
-        
+
         // 添加用户消息
         val userMessage = ChatMessage(
             id = System.currentTimeMillis().toString(),
             content = userInput,
             isUser = true
         )
-        messages = messages + userMessage
+        var msgList = listOf<ChatMessage>()
+        if (loadHistory) {
+            messages = messages + userMessage
+            msgList = messages + userMessage
+        } else {
+            msgList += userMessage
+        }
         dbService?.saveMessage(userMessage, currentSessionId)
-        
+
         // 构建历史消息
-        val llmMessages = messages.map { msg ->
+        val llmMessages = msgList.map { msg ->
             LLMMessage(
                 role = if (msg.isUser) "user" else "assistant",
                 content = msg.content
             )
         }
-        
+
         // 创建AI消息占位符
         val aiMessageId = (System.currentTimeMillis() + 1).toString()
         val aiMessage = ChatMessage(
@@ -154,14 +175,14 @@ class HomeViewModel(
             isUser = false
         )
         messages = messages + aiMessage
-        
+
         // 调用流式API
         ioScope.launch {
             try {
                 var fullContent = ""
                 llmService?.chatStream(llmMessages) { chunk ->
                     fullContent += chunk
-                    
+
                     // 更新消息内容
                     messages = messages.map { msg ->
                         if (msg.id == aiMessageId) {
@@ -170,7 +191,7 @@ class HomeViewModel(
                             msg
                         }
                     }
-                    
+
                     // 触发滚动到底部
                     onScrollToBottom()
                 } ?: run {
@@ -183,7 +204,7 @@ class HomeViewModel(
                         }
                     }
                 }
-                
+
                 // 保存完整消息
                 dbService?.saveMessage(
                     ChatMessage(
@@ -193,11 +214,11 @@ class HomeViewModel(
                     ),
                     currentSessionId
                 )
-                
+
                 isLoading = false
             } catch (e: Exception) {
                 e.printStackTrace()
-                
+
                 // 更新错误消息
                 val errorContent = "错误: ${e.message ?: "未知错误"}"
                 messages = messages.map { msg ->
@@ -207,12 +228,12 @@ class HomeViewModel(
                         msg
                     }
                 }
-                
+
                 isLoading = false
             }
         }
     }
-    
+
     /**
      * 从外部（如Action）发送消息到聊天窗口
      * 此方法不需要 onScrollToBottom 回调
@@ -220,6 +241,10 @@ class HomeViewModel(
     fun sendMessageFromExternal(userInput: String) {
         sendMessage(userInput) {
             // 空回调，因为从外部调用时可能无法访问UI的滚动状态
+        }
+        ioScope.launch {
+            // 发送信号：滚动到最后一条（索引 0 或 messages.size - 1）
+            _scrollEvents.emit(messages.size - 1)
         }
     }
 

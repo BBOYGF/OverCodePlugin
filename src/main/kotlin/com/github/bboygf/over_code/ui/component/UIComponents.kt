@@ -1,5 +1,6 @@
 package com.github.bboygf.over_code.ui.component
 
+import ai.grazie.utils.attributes.value
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -38,11 +39,15 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.bboygf.over_code.po.ChatMessage
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * 消息部分定义
@@ -207,15 +212,15 @@ fun MessageBubble(
                         Icon(
                             imageVector = Icons.Default.Person,
                             contentDescription = "用户",
-                            tint = Color.White,
+                            tint = Color(0xFFdfe1e5),
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text(text = "我", color = Color.White, fontSize = 12.sp)
+                        Text(text = "我", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                 } else {
                     Text(
-                        text = "OverCode:",
+                        text = "Over Code:",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF4A9D5F),
@@ -234,8 +239,8 @@ fun MessageBubble(
                                 Text(
                                     text = part.content,
                                     fontSize = 13.sp,
-                                    color = if (message.isUser) Color.White else Color(0xFFBBBBBB),
-                                    lineHeight = 20.sp
+                                    color = Color.White,
+                                    lineHeight = 20.sp,
                                 )
                             }
                         }
@@ -335,8 +340,8 @@ fun CodeBlock(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BottomInputArea(
-    inputText: String,
-    onInputChange: (String) -> Unit,
+    inputText: TextFieldValue,
+    onInputChange: (TextFieldValue) -> Unit,
     isLoading: Boolean,
     onSend: () -> Unit,
     activeModelName: String,
@@ -345,12 +350,14 @@ fun BottomInputArea(
     modelConfigs: List<com.github.bboygf.over_code.services.ModelConfigInfo>,
     onModelSelect: (String) -> Unit,
     backgroundColor: Color,
-    textColor: Color
+    textColor: Color,
+    isChecked: Boolean,
+    onLoadHistoryChange: (Boolean) -> Unit,
 ) {
     var modeMenuExpanded by remember { mutableStateOf(false) }
     var modelMenuExpanded by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
-
+    val scope = rememberCoroutineScope()
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -385,45 +392,69 @@ fun BottomInputArea(
                         .padding(bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Surface(
-                        onClick = { /* 添加上下文逻辑 */ },
-                        color = Color(0xFF2D2D2D),
-                        shape = RoundedCornerShape(4.dp),
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "Add",
-                                tint = Color(0xFF888888),
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "添加上下文",
-                                color = Color(0xFF888888),
-                                fontSize = 12.sp
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add",
+                            tint = Color(0xFFBBBBBB),
+                            modifier = Modifier.size(22.dp)
+                                .background(color = Color(0xFF2D2D2D))
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "添加上下文",
+                            color = Color(0xFF888888),
+                            fontSize = 12.sp
+                        )
                     }
                 }
 
                 // 中间：输入框
                 TextField(
                     value = inputText,
-                    onValueChange = onInputChange,
+                    onValueChange = { newValue ->
+                        // 这里直接更新状态
+                        onInputChange(newValue)
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .onPreviewKeyEvent {
                             println("key:${it.key} type:${it.type} isShiftPressed:${it.isShiftPressed}")
-                            if (it.key == Key.Enter && it.type == KeyEventType.KeyUp && !it.isShiftPressed) {
-                                onSend()
-                                return@onPreviewKeyEvent true
+                            if (it.key == Key.Enter && it.type == KeyEventType.KeyUp) {
+                                if (it.isShiftPressed) {
+                                    val currentText = inputText.text
+                                    val currentSelection = inputText.selection
+                                    val newText = StringBuilder(currentText)
+                                        .insert(currentSelection.start, "\n")
+                                        .toString()
+                                    val newCursorPos = currentSelection.start + 1
+                                    onInputChange(
+                                        TextFieldValue(
+                                            text = newText,
+                                            selection = TextRange(newCursorPos)
+                                        )
+                                    )
+                                    return@onPreviewKeyEvent true
+                                } else {
+                                    onSend()
+                                    return@onPreviewKeyEvent true
+                                }
+
                             } else {
                                 return@onPreviewKeyEvent false
                             }
+                        }
+                        .onFocusChanged {
+                            if (it.isFocused && !focused) { // 只有在从没焦点变为有焦点时触发
+                                scope.launch {
+                                    delay(50) // 很短的延迟，用户无感知
+                                    onInputChange(inputText.copy(selection = TextRange(inputText.text.length)))
+                                }
+                            }
+                            focused = it.isFocused
                         },
                     placeholder = {
                         Text(
@@ -546,13 +577,34 @@ fun BottomInputArea(
                                 }
                             }
                         }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        // 是否携带历史消息
+                        Box {
+                            Row(
+                                modifier = Modifier
+                                    .clickable { }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(isChecked, onCheckedChange = {
+                                    onLoadHistoryChange(it)
+                                })
+                                Text(
+                                    text = "历史消息",
+                                    color = Color(0xFF888888),
+                                    fontSize = 12.sp
+                                )
+                            }
+
+                        }
+
                     }
 
                     // 发送按钮
                     IconButton(
                         onClick = onSend,
                         modifier = Modifier.size(32.dp),
-                        enabled = inputText.isNotBlank() && !isLoading
+                        enabled = inputText.text.isNotBlank() && !isLoading
                     ) {
                         if (isLoading) {
                             CircularProgressIndicator(
@@ -564,7 +616,7 @@ fun BottomInputArea(
                             Icon(
                                 imageVector = Icons.Default.ArrowForward,
                                 contentDescription = "Send",
-                                tint = if (inputText.isNotBlank()) Color(0xFFBBBBBB) else Color(0xFF444444)
+                                tint = if (inputText.text.isNotBlank()) Color(0xFFBBBBBB) else Color(0xFF444444)
                             )
                         }
                     }
