@@ -10,7 +10,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,14 +25,14 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.github.bboygf.over_code.actions.ChatViewModelHolder
 import com.github.bboygf.over_code.llm.LLMService
 import com.github.bboygf.over_code.services.ChatDatabaseService
-import com.github.bboygf.over_code.services.SessionInfo
+import com.github.bboygf.over_code.services.ChatViewModelService
 import com.github.bboygf.over_code.ui.component.BottomInputArea
 import com.github.bboygf.over_code.ui.component.MessageBubble
 import com.github.bboygf.over_code.ui.component.WelcomeScreen
 import com.github.bboygf.over_code.ui.model_config.ModelConfigurable
+import com.github.bboygf.over_code.vo.SessionInfo
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
@@ -88,7 +92,7 @@ fun OverCodeChatUI(project: Project? = null) {
 
     // 注册 ViewModel 到 Project Service，以便 Action 可以访问
     LaunchedEffect(project, viewModel) {
-        project?.getService(ChatViewModelHolder::class.java)?.let { holder ->
+        project?.getService(ChatViewModelService::class.java)?.let { holder ->
             holder.viewModel = viewModel
         }
     }
@@ -169,7 +173,7 @@ fun OverCodeChatUI(project: Project? = null) {
                         }
                     }) {
                         Icon(
-                            imageVector = if (viewModel.showHistory) Icons.Default.Edit else Icons.Default.List,
+                            imageVector = if (viewModel.showHistory) Icons.Default.Edit else Icons.AutoMirrored.Filled.List,
                             contentDescription = "历史记录",
                             tint = if (viewModel.showHistory) primaryColor else textSecondaryColor
                         )

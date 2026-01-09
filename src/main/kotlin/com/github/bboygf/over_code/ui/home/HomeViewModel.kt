@@ -1,24 +1,23 @@
 package com.github.bboygf.over_code.ui.home
 
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.github.bboygf.over_code.llm.LLMMessage
 import com.github.bboygf.over_code.llm.LLMService
-import com.github.bboygf.over_code.po.ChatMessage
 import com.github.bboygf.over_code.services.ChatDatabaseService
-import com.github.bboygf.over_code.services.ModelConfigInfo
-import com.github.bboygf.over_code.services.SessionInfo
+import com.github.bboygf.over_code.vo.ChatMessage
+import com.github.bboygf.over_code.vo.ModelConfigInfo
+import com.github.bboygf.over_code.vo.SessionInfo
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.editor.EditorModificationUtil
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.project.Project
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import com.intellij.openapi.project.Project
-import com.intellij.openapi.fileEditor.FileEditorManager
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.launch
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 

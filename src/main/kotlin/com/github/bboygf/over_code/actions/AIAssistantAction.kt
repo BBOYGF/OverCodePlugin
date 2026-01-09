@@ -1,6 +1,7 @@
 package com.github.bboygf.over_code.actions
 
 import com.github.bboygf.over_code.services.ChatDatabaseService
+import com.github.bboygf.over_code.services.ChatViewModelService
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -98,7 +99,7 @@ class DynamicPromptAction(
         val toolWindow = toolWindowManager.getToolWindow("Over Code")
         
         toolWindow?.activate {
-            project.getService(ChatViewModelHolder::class.java)
+            project.getService(ChatViewModelService::class.java)
                 ?.sendMessageToChat(messageToAI)
         }
     }

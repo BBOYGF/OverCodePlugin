@@ -1,4 +1,4 @@
-package com.github.bboygf.over_code.po
+package com.github.bboygf.over_code.vo
 
 /**
  * 消息数据类

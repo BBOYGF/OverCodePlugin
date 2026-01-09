@@ -15,40 +15,6 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.awt.RelativePoint
 
 /**
- * 将选中的文本发送到聊天窗口进行翻译
- */
-class TranslateInChatAction : AnAction() {
-    override fun actionPerformed(e: AnActionEvent) {
-        val project = e.project ?: return
-        val editor = e.getData(CommonDataKeys.EDITOR) ?: return
-        val selectedText = editor.selectionModel.selectedText ?: return
-        if (selectedText.isBlank()) return
-        
-        val dbService = ChatDatabaseService.getInstance(project)
-        val messageToAI = try {
-            dbService.renderPrompt("translate_chat", mapOf("text" to selectedText))
-        } catch (ex: Exception) {
-            """请帮我将以下内容翻译成中文。如果内容是代码，请解释代码的含义并翻译其中的注释或字符串：
-        $selectedText
-        """.trimIndent()
-        }
-        
-        val toolWindowManager = ToolWindowManager.getInstance(project)
-        val toolWindow = toolWindowManager.getToolWindow("Over Code")
-        
-        toolWindow?.activate {
-            project.getService(ChatViewModelHolder::class.java)
-                ?.sendMessageToChat(messageToAI)
-        }
-    }
-
-    override fun update(e: AnActionEvent) {
-        val editor = e.getData(CommonDataKeys.EDITOR)
-        e.presentation.isEnabledAndVisible = editor?.selectionModel?.hasSelection() ?: false
-    }
-}
-
-/**
  * 在选中处下方弹出气泡显示翻译结果
  */
 class QuickTranslateAction : AnAction() {

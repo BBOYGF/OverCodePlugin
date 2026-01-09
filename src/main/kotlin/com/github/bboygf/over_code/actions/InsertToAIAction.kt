@@ -1,6 +1,6 @@
 package com.github.bboygf.over_code.actions
 
-import com.github.bboygf.over_code.services.ChatDatabaseService
+import com.github.bboygf.over_code.services.ChatViewModelService
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
@@ -16,45 +16,26 @@ class InsertToAIAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val editor = e.getData(CommonDataKeys.EDITOR) ?: return
-        
         // 获取选中的文本
         val selectedText = editor.selectionModel.selectedText
-        
         if (selectedText.isNullOrBlank()) {
             LOG.info("没有选中任何代码")
             return
         }
-        
         // 获取文件信息（可选，用于提供上下文）
         val psiFile = e.getData(CommonDataKeys.PSI_FILE)
         val fileName = psiFile?.name ?: "未知文件"
         val language = psiFile?.language?.displayName ?: "未知语言"
-        
         // 使用可配置的 Prompt 模板
-        val dbService = ChatDatabaseService.getInstance(project)
-        val messageToAI = try {
-            dbService.renderPrompt("explain_code", mapOf(
-                "code" to selectedText,
-                "fileName" to fileName,
-                "language" to language
-            ))
-        } catch (ex: Exception) {
-            LOG.warn("使用默认格式，原因: ${ex.message}")
-            // 如果 Prompt 模板不存在，使用默认文本
-            buildString {
-                appendLine("请帮我解释一下这段代码的意思：")
-                appendLine()
-                appendLine("文件名：$fileName")
-                appendLine("语言：$language")
-                appendLine()
-                appendLine("```$language")
-                appendLine(selectedText)
-                appendLine("```")
-            }
+        val messageToAI =  buildString {
+            appendLine("文件名：$fileName")
+            appendLine("语言：$language")
+            appendLine()
+            appendLine("```$language")
+            appendLine(selectedText)
+            appendLine("```")
         }
-        
         LOG.info("准备插入代码到聊天输入框，长度: ${selectedText.length}")
-        
         // 打开或激活 Over Code 工具窗口
         val toolWindowManager = ToolWindowManager.getInstance(project)
         val toolWindow = toolWindowManager.getToolWindow("Over Code")
@@ -63,7 +44,7 @@ class InsertToAIAction : AnAction() {
             // 激活工具窗口
             toolWindow.activate {
                 // 工具窗口激活后，插入文本到输入框
-                project.getService(ChatViewModelHolder::class.java)
+                project.getService(ChatViewModelService::class.java)
                     ?.insertTextToChat(messageToAI)
             }
         }

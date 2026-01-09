@@ -4,7 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.github.bboygf.over_code.services.ChatDatabaseService
-import com.github.bboygf.over_code.services.PromptInfo
+import com.github.bboygf.over_code.vo.PromptInfo
 
 class PromptConfigViewModel(private val dbService: ChatDatabaseService) {
     

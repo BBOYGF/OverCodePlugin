@@ -15,9 +15,9 @@ import androidx.compose.ui.awt.ComposePanel
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.github.bboygf.over_code.services.ChatDatabaseService
-import com.github.bboygf.over_code.services.ModelConfigInfo
-import com.github.bboygf.over_code.services.PromptInfo
 import com.github.bboygf.over_code.ui.prompt_config.PromptConfigViewModel
+import com.github.bboygf.over_code.vo.ModelConfigInfo
+import com.github.bboygf.over_code.vo.PromptInfo
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.project.Project
 import java.awt.Dimension

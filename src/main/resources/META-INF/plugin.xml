@@ -23,10 +23,10 @@
                     id="Over Code"
                     anchor="right"
                     icon="AllIcons.Toolwindows.ToolWindowMessages"/>
-        
+
         <!-- 注册一个在项目打开并启动完成后执行的任务 -->
-        <postStartupActivity implementation="com.github.bboygf.over_code.startup.InitProjectActivity" />
-        
+        <postStartupActivity implementation="com.github.bboygf.over_code.startup.InitProjectActivity"/>
+
         <!-- 注册统一配置设置页面 -->
         <projectConfigurable
                 parentId="tools"
@@ -55,22 +55,16 @@
                popup="true">
             <add-to-group group-id="EditorPopupMenu" anchor="first"/>
         </group>
-        
-        <!-- 询问AI - 将选中的代码发送到聊天窗口 -->
-        <action id="com.github.bboygf.over_code.AskAIAction"
-                class="com.github.bboygf.over_code.actions.AskAIAction"
-                text="询问 AI (解释代码)"
-                description="将选中的代码发送到 Over Code 聊天窗口，让 AI 帮你解释代码的意思">
-            <!-- 只绑定快捷键，不显示在菜单中 -->
-            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt A"/>
-        </action>
+
 
         <!-- 快捷翻译 - 弹窗显示 -->
         <action id="com.github.bboygf.over_code.QuickTranslateAction"
                 class="com.github.bboygf.over_code.actions.QuickTranslateAction"
                 text="快速翻译 (弹窗显示)"
                 description="在选中位置下方弹出翻译结果">
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt T"/>
         </action>
+
     </actions>
 </idea-plugin>

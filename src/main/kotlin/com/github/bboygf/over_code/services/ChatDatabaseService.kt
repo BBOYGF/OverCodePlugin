@@ -1,63 +1,21 @@
 package com.github.bboygf.over_code.services
 
-import com.github.bboygf.over_code.po.ChatMessage
+import com.github.bboygf.over_code.po.ChatMessages
+import com.github.bboygf.over_code.po.ChatSessions
+import com.github.bboygf.over_code.po.ModelConfigs
+import com.github.bboygf.over_code.po.PromptTemplates
+import com.github.bboygf.over_code.vo.ChatMessage
+import com.github.bboygf.over_code.vo.ModelConfigInfo
+import com.github.bboygf.over_code.vo.PromptInfo
+import com.github.bboygf.over_code.vo.SessionInfo
 import com.intellij.openapi.components.Service
+import com.intellij.openapi.project.BaseProjectDirectories.Companion.getBaseDirectories
 import com.intellij.openapi.project.Project
-import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
 
-/**
- * 聊天消息数据库表定义
- */
-object ChatMessages : IntIdTable("chat_messages") {
-    val messageId = varchar("message_id", 50).uniqueIndex()
-    val content = text("content")
-    val isUser = bool("is_user")
-    val timestamp = long("timestamp")
-    val sessionId = varchar("session_id", 50).default("default")
-}
-
-/**
- * 聊天会话数据库表定义
- */
-object ChatSessions : IntIdTable("chat_sessions") {
-    val sessionId = varchar("session_id", 50).uniqueIndex()
-    val title = varchar("title", 200).default("新对话")
-    val createdAt = long("created_at")
-    val updatedAt = long("updated_at")
-}
-
-/**
- * 模型配置数据库表定义
- */
-object ModelConfigs : IntIdTable("model_configs") {
-    val modelId = varchar("model_id", 50).uniqueIndex()
-    val name = varchar("name", 100)
-    val provider = varchar("provider", 50) // "openai", "ollama", "zhipu", etc.
-    val baseUrl = varchar("base_url", 500)
-    val apiKey = varchar("api_key", 500).default("")
-    val modelName = varchar("model_name", 100) // "gpt-3.5-turbo", "llama2", etc.
-    val isActive = bool("is_active").default(false)
-    val createdAt = long("created_at")
-    val updatedAt = long("updated_at")
-}
-
-/**
- * Prompt 模板数据库表定义
- */
-object PromptTemplates : IntIdTable("prompt_templates") {
-    val promptId = varchar("prompt_id", 50).uniqueIndex()
-    val name = varchar("name", 100)
-    val key = varchar("key", 50).uniqueIndex()
-    val template = text("template")
-    val description = varchar("description", 500).default("")
-    val isBuiltIn = bool("is_built_in").default(false)
-    val createdAt = long("created_at")
-    val updatedAt = long("updated_at")
-}
 
 /**
  * 聊天数据库服务
@@ -69,7 +27,7 @@ class ChatDatabaseService(private val project: Project) {
 
     init {
         // 获取插件数据目录
-        val pluginDataDir = File(System.getProperty("user.home"), ".over_code")
+        val pluginDataDir = File(project.basePath+"/.idea", ".over_code")
         if (!pluginDataDir.exists()) {
             pluginDataDir.mkdirs()
         }
@@ -594,42 +552,3 @@ class ChatDatabaseService(private val project: Project) {
         }
     }
 }
-
-/**
- * 会话信息数据类
- */
-data class SessionInfo(
-    val sessionId: String,
-    val title: String,
-    val createdAt: Long,
-    val updatedAt: Long
-)
-
-/**
- * 模型配置信息数据类
- */
-data class ModelConfigInfo(
-    val modelId: String = "",
-    val name: String,
-    val provider: String,
-    val baseUrl: String,
-    val apiKey: String = "",
-    val modelName: String,
-    val isActive: Boolean = false,
-    val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
-)
-
-/**
- * Prompt 模板信息数据类
- */
-data class PromptInfo(
-    val promptId: String = "",
-    val name: String,
-    val key: String,
-    val template: String,
-    val description: String = "",
-    val isBuiltIn: Boolean = false,
-    val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
-)
