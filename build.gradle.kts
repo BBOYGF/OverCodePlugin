@@ -187,6 +187,11 @@ tasks {
     }
 }
 
+tasks.withType<org.jetbrains.intellij.platform.gradle.tasks.PrepareSandboxTask> {
+    disabledPlugins.add("com.intellij.kubernetes")
+}
+
+
 // UI 测试相关配置
 intellijPlatformTesting {
     runIde {
@@ -207,4 +212,17 @@ intellijPlatformTesting {
             }
         }
     }
+}
+// 2. 在 dependencies 块之外，或者在文件末尾添加以下代码：
+configurations.runtimeClasspath {
+    exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-core")
+    exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-core-jvm")
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
+    exclude(group = "org.jetbrains", module = "annotations")
+}
+
+configurations.testRuntimeClasspath {
+    exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-core")
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
 }

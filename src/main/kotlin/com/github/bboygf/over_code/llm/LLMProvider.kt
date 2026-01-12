@@ -20,7 +20,7 @@ interface LLMProvider {
     /**
      * 发送聊天消息并获取回复（同步）
      */
-    fun chatSync(messages: List<LLMMessage>): String {
+    suspend fun chatAsync(messages: List<LLMMessage>): String {
         // 默认实现：直接同步调用
         throw UnsupportedOperationException("请实现 chatSync 方法")
     }

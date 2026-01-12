@@ -1,14 +1,14 @@
 package com.github.bboygf.over_code.llm
 
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.util.io.HttpRequests
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.concurrent.Callable
 
 /**
  * Ollama LLM Provider
@@ -19,14 +19,15 @@ class OllamaProvider(
 ) : LLMProvider {
     
     override suspend fun chat(messages: List<LLMMessage>): String {
-        return chatSync(messages)
+        return chatAsync(messages)
     }
     
-    override fun chatSync(messages: List<LLMMessage>): String {
-        return ApplicationManager.getApplication().executeOnPooledThread(Callable {
+    override suspend fun chatAsync(messages: List<LLMMessage>): String {
+        return withContext(Dispatchers.IO) {
             try {
                 val requestBody = buildRequestBody(messages)
-                
+
+                // HttpRequests 是同步的，但在 Dispatchers.IO 中运行是安全的
                 val response = HttpRequests.post("$baseUrl/api/chat", "application/json")
                     .connect { request ->
                         val output = request.connection.outputStream
@@ -34,12 +35,13 @@ class OllamaProvider(
                         output.flush()
                         request.readString()
                     }
-                
+
                 parseResponse(response)
             } catch (e: Exception) {
+                // 建议使用插件专用的异常处理
                 throw LLMException("调用 Ollama API 失败: ${e.message}", e)
             }
-        }).get()
+        }
     }
     
     /**

@@ -21,10 +21,10 @@ class OpenAICompatibleProvider(
 ) : LLMProvider {
     
     override suspend fun chat(messages: List<LLMMessage>): String {
-        return chatSync(messages)
+        return chatAsync(messages)
     }
     
-    override fun chatSync(messages: List<LLMMessage>): String {
+    override suspend fun chatAsync(messages: List<LLMMessage>): String {
         return ApplicationManager.getApplication().executeOnPooledThread(Callable {
             try {
                 val requestBody = buildRequestBody(messages)
