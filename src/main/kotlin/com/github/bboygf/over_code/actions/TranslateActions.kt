@@ -1,7 +1,7 @@
 package com.github.bboygf.over_code.actions
 
-import com.github.bboygf.over_code.llm.LLMMessage
 import com.github.bboygf.over_code.llm.LLMService
+import com.github.bboygf.over_code.po.LLMMessage
 import com.github.bboygf.over_code.services.ChatDatabaseService
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -49,7 +49,7 @@ class QuickTranslateAction : AnAction() {
                     "你是一个专业的翻译助手。请直接输出以下内容的中文翻译结果，不需要任何开场白或解释：\n\n$selectedText"
                 }
 
-                val result = llmService.chatSync(listOf(LLMMessage("user", prompt)))
+                val result = llmService.chat(listOf(LLMMessage("user", prompt)))
 
                 // 3. 回到 UI 线程更新结果
                 withContext(Dispatchers.EDT) {

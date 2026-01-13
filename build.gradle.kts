@@ -13,6 +13,7 @@ plugins {
     alias(libs.plugins.changelog) // 管理插件更新日志 (CHANGELOG.md) 的插件
     alias(libs.plugins.qodana) // JetBrains 的代码质量扫描插件
     alias(libs.plugins.kover) // Kotlin 代码测试覆盖率插件
+    kotlin("plugin.serialization") version "2.3.0"
 }
 
 // 从 gradle.properties 中读取插件组 ID 和版本号
@@ -58,7 +59,16 @@ dependencies {
     implementation(libs.sqlite.jdbc)
 
     // JSON 处理
-    implementation("org.json:json:20231013")
+//    implementation("org.json:json:20231013")
+
+    implementation("io.ktor:ktor-client-core-jvm:3.0.2") // 接口
+    implementation("io.ktor:ktor-client-cio:3.0.2") // 干活的
+    implementation("ch.qos.logback:logback-classic:1.4.5") // 日志
+    implementation("io.ktor:ktor-client-content-negotiation:3.0.2") //接口
+    implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.2") //  接口
+
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3") // 干活的
+
 
     // IntelliJ 平台相关的依赖配置
     intellijPlatform {
@@ -73,8 +83,6 @@ dependencies {
 
         // 引入 gradle.properties 中定义的内置模块依赖
         bundledModules(providers.gradleProperty("platformBundledModules").map { it.split(',') })
-
-        bundledModules(listOf("intellij.libraries.skiko"))
 
         // 引入测试框架
         testFramework(TestFrameworkType.Platform)
@@ -213,13 +221,27 @@ intellijPlatformTesting {
         }
     }
 }
-// 2. 在 dependencies 块之外，或者在文件末尾添加以下代码：
+// 运行时排除这些模块
 configurations.runtimeClasspath {
+    // 排除所有 kotlinx 协程
     exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-core")
     exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-core-jvm")
+    exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-jdk8")
+
+    // 排除所有 Kotlin 标准库及其变体
     exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-jdk7")
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-jdk8")
     exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-annotation-processing-gradle")
+
+    // 排除 Skiko（如果你确认使用 IDE 自带的渲染器）
+//    exclude(group = "org.jetbrains.skiko", module = "skiko-awt")
+//    exclude(group = "org.jetbrains.skiko", module = "skiko-awt-runtime-windows-x64")
+
+    // 排除通用注解
     exclude(group = "org.jetbrains", module = "annotations")
+    exclude(group = "androidx.annotation", module = "annotation-jvm")
 }
 
 configurations.testRuntimeClasspath {

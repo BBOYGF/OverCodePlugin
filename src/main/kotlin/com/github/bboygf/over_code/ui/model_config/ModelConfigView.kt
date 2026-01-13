@@ -1,6 +1,7 @@
 package com.github.bboygf.over_code.ui.model_config
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -8,6 +9,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,16 +29,16 @@ import javax.swing.JComponent
  * 统一配置页面 - 包含模型配置和 Prompt 模板
  */
 class ModelConfigurable(private val project: Project) : Configurable {
-    
+
     private val dbService = ChatDatabaseService.getInstance(project)
     private var composePanel: ComposePanel? = null
-    
+
     override fun getDisplayName(): String = "Over Code 配置"
-    
+
     override fun createComponent(): JComponent {
         println("[ModelConfigurable] Creating component...")
         composePanel = ComposePanel().apply {
-            preferredSize = Dimension(900, 700)
+            preferredSize = Dimension(-1, -1)
             setContent {
                 MaterialTheme {
                     Surface(
@@ -51,13 +53,13 @@ class ModelConfigurable(private val project: Project) : Configurable {
         println("[ModelConfigurable] Component created successfully")
         return composePanel!!
     }
-    
+
     override fun isModified(): Boolean = false
-    
+
     override fun apply() {}
-    
+
     override fun reset() {}
-    
+
     override fun disposeUIResources() {
         composePanel = null
     }
@@ -68,23 +70,31 @@ class ModelConfigurable(private val project: Project) : Configurable {
 fun UnifiedConfigScreen(dbService: ChatDatabaseService) {
     var selectedTabIndex by remember { mutableStateOf(0) }
     val tabs = listOf("模型配置", "Prompt 模板")
-    
+
     Column(modifier = Modifier.fillMaxSize()) {
         // Tab 切换
         TabRow(
             selectedTabIndex = selectedTabIndex,
             containerColor = Color(0xFF2B2B2B),
-            contentColor = Color.White
+            contentColor = Color.White,
+            indicator = { tabPositions ->
+                TabRowDefaults.SecondaryIndicator(
+                    // 使用 tabIndicatorOffset 让指示器自动移动到选中的 Tab 位置
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
+                    color = Color.White // 将颜色修改为白色
+                )
+            }
         ) {
             tabs.forEachIndexed { index, title ->
                 Tab(
                     selected = selectedTabIndex == index,
                     onClick = { selectedTabIndex = index },
-                    text = { Text(title) }
-                )
+                    text = { Text(title) },
+
+                    )
             }
         }
-        
+
         // Tab 内容
         when (selectedTabIndex) {
             0 -> ModelConfigScreen(dbService)
@@ -96,7 +106,7 @@ fun UnifiedConfigScreen(dbService: ChatDatabaseService) {
 @Composable
 fun PromptConfigScreen(dbService: ChatDatabaseService) {
     val viewModel = remember { PromptConfigViewModel(dbService) }
-    
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -108,40 +118,44 @@ fun PromptConfigScreen(dbService: ChatDatabaseService) {
             color = Color.White,
             modifier = Modifier.padding(bottom = 8.dp)
         )
-        
+
         Text(
             text = "管理 AI 操作使用的提示词模板，支持变量占位符：{{code}}, {{language}}, {{fileName}}, {{text}}",
             style = MaterialTheme.typography.bodySmall,
             color = Color.Gray,
             modifier = Modifier.padding(bottom = 16.dp)
         )
-        
+
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Button(onClick = { viewModel.showAddDialog() }) {
+            Button(
+                onClick = { viewModel.showAddDialog() },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3574F0))
+            ) {
                 Text("添加模板")
             }
-            
+
             Button(
                 onClick = { viewModel.startEditPrompt() },
-                enabled = viewModel.selectedIndex != null && 
-                         !viewModel.prompts.getOrNull(viewModel.selectedIndex ?: -1)?.isBuiltIn!!
+                enabled = viewModel.selectedIndex != null &&
+                        !viewModel.prompts.getOrNull(viewModel.selectedIndex ?: -1)?.isBuiltIn!!,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3574F0))
             ) {
                 Text("编辑")
             }
-            
+
             Button(
                 onClick = { viewModel.deleteSelectedPrompt() },
-                enabled = viewModel.selectedIndex != null && 
-                         !viewModel.prompts.getOrNull(viewModel.selectedIndex ?: -1)?.isBuiltIn!!,
+                enabled = viewModel.selectedIndex != null &&
+                        !viewModel.prompts.getOrNull(viewModel.selectedIndex ?: -1)?.isBuiltIn!!,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB00020))
             ) {
                 Text("删除")
             }
         }
-        
+
         Card(
             modifier = Modifier.fillMaxWidth().weight(1f),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF3C3F41))
@@ -163,7 +177,7 @@ fun PromptConfigScreen(dbService: ChatDatabaseService) {
                         Text("类型", color = Color.White, modifier = Modifier.weight(0.8f))
                     }
                 }
-                
+
                 itemsIndexed(viewModel.prompts) { index, prompt ->
                     PromptRow(
                         prompt = prompt,
@@ -174,7 +188,7 @@ fun PromptConfigScreen(dbService: ChatDatabaseService) {
             }
         }
     }
-    
+
     if (viewModel.showAddDialog) {
         PromptEditDialog(
             prompt = null,
@@ -184,7 +198,7 @@ fun PromptConfigScreen(dbService: ChatDatabaseService) {
             }
         )
     }
-    
+
     viewModel.editingPrompt?.let { prompt ->
         PromptEditDialog(
             prompt = prompt,
@@ -248,13 +262,14 @@ fun PromptEditDialog(
     var key by remember { mutableStateOf(prompt?.key ?: "") }
     var template by remember { mutableStateOf(prompt?.template ?: "") }
     var description by remember { mutableStateOf(prompt?.description ?: "") }
-    
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (prompt == null) "添加 Prompt 模板" else "编辑 Prompt 模板") },
         text = {
             Column(
-                modifier = Modifier.width(600.dp).heightIn(max = 500.dp).padding(8.dp),
+                modifier = Modifier.width(600.dp).heightIn(max = 500.dp).padding(8.dp)
+                    .background(Color(0xFF2B2B2B)),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 OutlinedTextField(
@@ -263,7 +278,7 @@ fun PromptEditDialog(
                     label = { Text("模板名称") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                
+
                 OutlinedTextField(
                     value = key,
                     onValueChange = { key = it },
@@ -271,14 +286,14 @@ fun PromptEditDialog(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = prompt == null
                 )
-                
+
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
                     label = { Text("描述") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                
+
                 OutlinedTextField(
                     value = template,
                     onValueChange = { template = it },
@@ -287,7 +302,7 @@ fun PromptEditDialog(
                     maxLines = 10,
                     minLines = 8
                 )
-                
+
                 Text(
                     "可用变量: {{code}}, {{language}}, {{fileName}}, {{text}}",
                     style = MaterialTheme.typography.bodySmall,
@@ -310,7 +325,7 @@ fun PromptEditDialog(
                             )
                         )
                     }
-                }
+                }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3574F0))
             ) {
                 Text("确定")
             }
@@ -326,12 +341,12 @@ fun PromptEditDialog(
 @Composable
 fun ModelConfigScreen(dbService: ChatDatabaseService) {
     println("[ModelConfigScreen] Rendering...")
-    
+
     // ViewModel
     val viewModel = remember { ModelConfigViewModel(dbService) }
-    
+
     println("[ModelConfigScreen] Model configs count: ${viewModel.modelConfigs.size}")
-    
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -344,23 +359,27 @@ fun ModelConfigScreen(dbService: ChatDatabaseService) {
             color = Color.White,
             modifier = Modifier.padding(bottom = 16.dp)
         )
-        
+
         // 按钮栏
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Button(onClick = { viewModel.showAddDialog() }) {
+            Button(
+                onClick = { viewModel.showAddDialog() },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3574F0))
+            ) {
                 Text("添加模型")
             }
-            
+
             Button(
                 onClick = { viewModel.startEditConfig() },
-                enabled = viewModel.selectedIndex != null
+                enabled = viewModel.selectedIndex != null,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3574F0))
             ) {
                 Text("编辑")
             }
-            
+
             Button(
                 onClick = { viewModel.deleteSelectedConfig() },
                 enabled = viewModel.selectedIndex != null,
@@ -368,15 +387,16 @@ fun ModelConfigScreen(dbService: ChatDatabaseService) {
             ) {
                 Text("删除")
             }
-            
+
             Button(
                 onClick = { viewModel.setSelectedAsActive() },
-                enabled = viewModel.selectedIndex != null
+                enabled = viewModel.selectedIndex != null,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3574F0))
             ) {
                 Text("设为当前模型")
             }
         }
-        
+
         // 模型列表
         Card(
             modifier = Modifier.fillMaxWidth().weight(1f),
@@ -401,7 +421,7 @@ fun ModelConfigScreen(dbService: ChatDatabaseService) {
                         Text("当前使用", color = Color.White, modifier = Modifier.weight(0.8f))
                     }
                 }
-                
+
                 // 数据行
                 itemsIndexed(viewModel.modelConfigs) { index, config ->
                     ModelConfigRow(
@@ -413,7 +433,7 @@ fun ModelConfigScreen(dbService: ChatDatabaseService) {
             }
         }
     }
-    
+
     // 添加模型对话框
     if (viewModel.showAddDialog) {
         ModelConfigDialog(
@@ -425,7 +445,7 @@ fun ModelConfigScreen(dbService: ChatDatabaseService) {
             }
         )
     }
-    
+
     // 编辑模型对话框
     viewModel.editingConfig?.let { config ->
         ModelConfigDialog(
@@ -485,9 +505,9 @@ fun ModelConfigDialog(
     var modelName by remember { mutableStateOf(config?.modelName ?: "gpt-3.5-turbo") }
     var isActive by remember { mutableStateOf(config?.isActive ?: false) }
     var showProviderMenu by remember { mutableStateOf(false) }
-    
+
     val providers = listOf("openai", "ollama", "zhipu", "qwen", "deepseek", "moonshot", "custom")
-    
+
     // 预设配置
     LaunchedEffect(provider) {
         if (config == null) {
@@ -501,7 +521,7 @@ fun ModelConfigDialog(
             }
         }
     }
-    
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (config == null) "添加模型" else "编辑模型") },
@@ -516,7 +536,7 @@ fun ModelConfigDialog(
                     label = { Text("配置名称") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                
+
                 // 提供商选择（使用简单按钮）
                 Column {
                     Text("提供商:", style = MaterialTheme.typography.bodySmall)
@@ -526,7 +546,7 @@ fun ModelConfigDialog(
                     ) {
                         Text(provider)
                     }
-                    
+
                     if (showProviderMenu) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -548,28 +568,28 @@ fun ModelConfigDialog(
                         }
                     }
                 }
-                
+
                 OutlinedTextField(
                     value = baseUrl,
                     onValueChange = { baseUrl = it },
                     label = { Text("Base URL") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                
+
                 OutlinedTextField(
                     value = apiKey,
                     onValueChange = { apiKey = it },
                     label = { Text("API Key (可选)") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                
+
                 OutlinedTextField(
                     value = modelName,
                     onValueChange = { modelName = it },
                     label = { Text("模型名称") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                
+
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -579,7 +599,7 @@ fun ModelConfigDialog(
                     )
                     Text("设为当前使用的模型")
                 }
-                
+
                 Text(
                     "提示: Ollama 本地模型无需 API Key",
                     style = MaterialTheme.typography.bodySmall,

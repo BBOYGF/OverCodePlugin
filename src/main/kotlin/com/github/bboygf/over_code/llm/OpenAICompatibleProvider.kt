@@ -1,14 +1,28 @@
 package com.github.bboygf.over_code.llm
 
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.util.io.HttpRequests
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.concurrent.Callable
+import com.github.bboygf.over_code.po.LLMMessage
+import com.github.bboygf.over_code.po.OpenAIMessage
+import com.github.bboygf.over_code.po.OpenAIRequest
+import com.github.bboygf.over_code.po.OpenAIResponse
+import com.intellij.openapi.diagnostic.thisLogger
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.preparePost
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
+import io.ktor.serialization.kotlinx.json.json
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.readUTF8Line
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 
 /**
  * OpenAI 兼容的 LLM Provider
@@ -19,115 +33,114 @@ class OpenAICompatibleProvider(
     private val apiKey: String,
     private val model: String
 ) : LLMProvider {
-    
-    override suspend fun chat(messages: List<LLMMessage>): String {
-        return chatAsync(messages)
+    /**
+     * 日志
+     */
+    val logger = thisLogger()
+    private val client = HttpClient(CIO) {
+        install(ContentNegotiation) {
+            json(Json {
+                ignoreUnknownKeys = true // 忽略响应中多余的字段（重要！）
+                encodeDefaults = true    // 编码默认值
+                isLenient = true
+            })
+        }
+        install(HttpTimeout) { requestTimeoutMillis = 60000 }
     }
-    
-    override suspend fun chatAsync(messages: List<LLMMessage>): String {
-        return ApplicationManager.getApplication().executeOnPooledThread(Callable {
+
+    override suspend fun chat(messages: List<LLMMessage>): String {
+        return withContext(Dispatchers.IO) {
+            val messageDtos = messages.map { message ->
+                OpenAIMessage(
+                    role = message.role,
+                    content = message.content,
+                )
+            }
+            val requestBody = OpenAIRequest(
+                model = model,
+                messages = messageDtos,
+                stream = false
+            )
             try {
-                val requestBody = buildRequestBody(messages)
-                
-                val response = HttpRequests.post("$baseUrl/chat/completions", "application/json")
-                    .tuner { connection ->
-                        connection.setRequestProperty("Authorization", "Bearer $apiKey")
-                    }
-                    .connect { request ->
-                        val output = request.connection.outputStream
-                        output.write(requestBody.toByteArray(Charsets.UTF_8))
-                        output.flush()
-                        request.readString()
-                    }
-                
-                parseResponse(response)
+                val response: OpenAIResponse = client.post("$baseUrl/chat/completions") {
+                    header("Authorization", "Bearer $apiKey")
+                    contentType(ContentType.Application.Json)
+                    setBody(requestBody)
+                }.body()
+                return@withContext response.choices.first().message?.content ?: ""
             } catch (e: Exception) {
                 throw LLMException("调用 LLM API 失败: ${e.message}", e)
             }
-        }).get()
+        }
     }
-    
+
     /**
      * 流式聊天 - 逐字输出
      */
     override suspend fun chatStream(messages: List<LLMMessage>, onChunk: (String) -> Unit) {
-        try {
-            val requestBody = buildRequestBody(messages, stream = true)
-            val url = URL("$baseUrl/chat/completions")
-            val connection = url.openConnection() as HttpURLConnection
-            
-            connection.requestMethod = "POST"
-            connection.setRequestProperty("Content-Type", "application/json")
-            connection.setRequestProperty("Authorization", "Bearer $apiKey")
-            connection.doOutput = true
-            connection.doInput = true
-            
-            // 发送请求
-            connection.outputStream.use { output ->
-                output.write(requestBody.toByteArray(Charsets.UTF_8))
-                output.flush()
+        withContext(Dispatchers.IO) {
+            val messageDtos = messages.map { message ->
+                OpenAIMessage(
+                    role = message.role,
+                    content = message.content,
+                )
             }
-            
-            // 读取流式响应
-            BufferedReader(InputStreamReader(connection.inputStream, Charsets.UTF_8)).use { reader ->
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    val chunk = line ?: continue
-                    if (chunk.startsWith("data: ")) {
-                        val data = chunk.substring(6).trim()
-                        if (data == "[DONE]") break
-                        
+            val requestBody = OpenAIRequest(
+                model = model,
+                messages = messageDtos,
+                stream = true
+            )
+            try {
+                client.preparePost("$baseUrl/chat/completions") {
+                    header("Authorization", "Bearer $apiKey")
+                    contentType(ContentType.Application.Json)
+                    setBody(requestBody)
+                }.execute { response ->
+                    // 获取读取通道
+                    val channel: ByteReadChannel = response.bodyAsChannel()
+                    // 3. 循环读取流
+                    while (!channel.isClosedForRead) {
+                        // readUTF8Line 是挂起函数，非阻塞
+                        var line = channel.readUTF8Line() ?: break
+
+                        if (line.isBlank()) continue
+
+                        if (line.startsWith(":")) {
+                            continue
+                        }
+                        if (line.startsWith("data: ")) {
+                            line = line.removePrefix("data: ")
+                        }
+                        if (line == "[DONE]") {
+                            break
+                        }
                         try {
-                            val json = JSONObject(data)
-                            val choices = json.getJSONArray("choices")
-                            if (choices.length() > 0) {
-                                val delta = choices.getJSONObject(0).optJSONObject("delta")
-                                val content = delta?.optString("content", "")
-                                if (!content.isNullOrEmpty()) {
-                                    onChunk(content)
-                                }
+                            // 使用 Kotlinx Serialization 反序列化，替代 JSONObject
+                            // 这里需要配置 ignoreUnknownKeys = true 的 Json 实例
+                            // 建议使用类成员变量或全局单例 Json，这里为了演示直接调用
+                            val responseObj = Json { ignoreUnknownKeys = true }.decodeFromString<OpenAIResponse>(line)
+                            val delta = responseObj.choices.firstOrNull()?.delta
+                            val content = delta?.content
+                            val reasoning = delta?.reasoning_content
+                            logger.debug("思考: $reasoning")
+                            if (!content.isNullOrEmpty()) {
+                                onChunk(content)
+                            }
+
+                            // 检查是否结束 (部分模型可能通过 finish_reason 标记)
+                            if (responseObj.choices.firstOrNull()?.finish_reason != null) {
+                                // 通常可以忽略，或者在这里 break
                             }
                         } catch (e: Exception) {
-                            // 忽略解析错误的行
+                            logger.error("解析 Ollama 响应失败: ${e.message}\n原始响应: $line", e)
                         }
                     }
                 }
+
+            } catch (e: Exception) {
+                throw LLMException("流式调用 LLM API 失败: ${e.message}", e)
             }
-        } catch (e: Exception) {
-            throw LLMException("流式调用 LLM API 失败: ${e.message}", e)
         }
     }
-    
-    private fun buildRequestBody(messages: List<LLMMessage>, stream: Boolean = false): String {
-        val json = JSONObject()
-        json.put("model", model)
-        json.put("stream", stream)
-        
-        val messagesArray = JSONArray()
-        messages.forEach { msg ->
-            val messageObj = JSONObject()
-            messageObj.put("role", msg.role)
-            messageObj.put("content", msg.content)
-            messagesArray.put(messageObj)
-        }
-        json.put("messages", messagesArray)
-        
-        return json.toString()
-    }
-    
-    private fun parseResponse(response: String): String {
-        try {
-            val json = JSONObject(response)
-            val choices = json.getJSONArray("choices")
-            if (choices.length() == 0) {
-                throw LLMException("API 返回结果为空")
-            }
-            
-            val firstChoice = choices.getJSONObject(0)
-            val message = firstChoice.getJSONObject("message")
-            return message.getString("content")
-        } catch (e: Exception) {
-            throw LLMException("解析 API 响应失败: ${e.message}\n原始响应: $response", e)
-        }
-    }
+
 }

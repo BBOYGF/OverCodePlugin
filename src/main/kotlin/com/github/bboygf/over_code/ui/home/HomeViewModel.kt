@@ -3,8 +3,8 @@ package com.github.bboygf.over_code.ui.home
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.github.bboygf.over_code.llm.LLMMessage
 import com.github.bboygf.over_code.llm.LLMService
+import com.github.bboygf.over_code.po.LLMMessage
 import com.github.bboygf.over_code.services.ChatDatabaseService
 import com.github.bboygf.over_code.vo.ChatMessage
 import com.github.bboygf.over_code.vo.ModelConfigInfo
@@ -62,6 +62,7 @@ class HomeViewModel(
     val scrollEvents = _scrollEvents.asSharedFlow()
 
     private val ioScope = CoroutineScope(Dispatchers.IO)
+    private val uiScope = CoroutineScope(Dispatchers.Main)
 
     // 2. 暴露事件处理函数
     fun onLoadHistoryChange(newValue: Boolean) {
@@ -180,26 +181,30 @@ class HomeViewModel(
             try {
                 var fullContent = ""
                 llmService?.chatStream(llmMessages) { chunk ->
+
                     fullContent += chunk
 
                     // 更新消息内容
-                    messages = messages.map { msg ->
-                        if (msg.id == aiMessageId) {
-                            msg.copy(content = fullContent)
-                        } else {
-                            msg
+                    uiScope.launch {
+                        messages = messages.map { msg ->
+                            if (msg.id == aiMessageId) {
+                                msg.copy(content = fullContent)
+                            } else {
+                                msg
+                            }
                         }
+                        // 触发滚动到底部
+                        onScrollToBottom()
                     }
-
-                    // 触发滚动到底部
-                    onScrollToBottom()
                 } ?: run {
-                    fullContent = "未配置模型，请先在设置中配置并激活一个模型"
-                    messages = messages.map { msg ->
-                        if (msg.id == aiMessageId) {
-                            msg.copy(content = fullContent)
-                        } else {
-                            msg
+                    uiScope.launch {
+                        fullContent = "未配置模型，请先在设置中配置并激活一个模型"
+                        messages = messages.map { msg ->
+                            if (msg.id == aiMessageId) {
+                                msg.copy(content = fullContent)
+                            } else {
+                                msg
+                            }
                         }
                     }
                 }

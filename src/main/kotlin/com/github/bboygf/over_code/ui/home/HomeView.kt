@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.bboygf.over_code.llm.LLMService
 import com.github.bboygf.over_code.services.ChatDatabaseService
-import com.github.bboygf.over_code.services.ChatViewModelService
+import com.github.bboygf.over_code.services.HomeViewModelService
 import com.github.bboygf.over_code.ui.component.BottomInputArea
 import com.github.bboygf.over_code.ui.component.MessageBubble
 import com.github.bboygf.over_code.ui.component.WelcomeScreen
@@ -92,7 +92,7 @@ fun OverCodeChatUI(project: Project? = null) {
 
     // 注册 ViewModel 到 Project Service，以便 Action 可以访问
     LaunchedEffect(project, viewModel) {
-        project?.getService(ChatViewModelService::class.java)?.let { holder ->
+        project?.getService(HomeViewModelService::class.java)?.let { holder ->
             holder.viewModel = viewModel
         }
     }

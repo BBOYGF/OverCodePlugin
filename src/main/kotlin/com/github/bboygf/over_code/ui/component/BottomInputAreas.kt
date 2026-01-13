@@ -169,7 +169,7 @@ fun BottomInputArea(
                         .onFocusChanged {
                             if (it.isFocused && !focused) { // 只有在从没焦点变为有焦点时触发
                                 scope.launch {
-                                    delay(50) // 很短的延迟，用户无感知
+                                    delay(10) // 很短的延迟，用户无感知
                                     onInputChange(inputText.copy(selection = TextRange(inputText.text.length)))
                                 }
                             }

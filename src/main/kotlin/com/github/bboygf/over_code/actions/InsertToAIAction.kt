@@ -1,6 +1,6 @@
 package com.github.bboygf.over_code.actions
 
-import com.github.bboygf.over_code.services.ChatViewModelService
+import com.github.bboygf.over_code.services.HomeViewModelService
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
@@ -44,7 +44,7 @@ class InsertToAIAction : AnAction() {
             // 激活工具窗口
             toolWindow.activate {
                 // 工具窗口激活后，插入文本到输入框
-                project.getService(ChatViewModelService::class.java)
+                project.getService(HomeViewModelService::class.java)
                     ?.insertTextToChat(messageToAI)
             }
         }
