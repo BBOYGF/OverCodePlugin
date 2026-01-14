@@ -10,13 +10,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
@@ -25,6 +29,9 @@ import com.github.bboygf.over_code.vo.MessagePart
 import com.github.bboygf.over_code.vo.ModelConfigInfo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.jetbrains.skia.Image
+import java.awt.Cursor
+import java.util.*
 
 
 /**
@@ -72,7 +79,12 @@ fun BottomInputArea(
     textColor: Color,
     isChecked: Boolean,
     onLoadHistoryChange: (Boolean) -> Unit,
+    selectedImageBase64: String? = null,
+    onClearImage: () -> Unit = {},
+    onPasteImage: () -> Boolean = { false },
+    onSelectImage: () -> Unit = {}
 ) {
+
     var modeMenuExpanded by remember { mutableStateOf(false) }
     var modelMenuExpanded by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
@@ -104,6 +116,50 @@ fun BottomInputArea(
                     )
                     .padding(8.dp)
             ) {
+                // 预览图片
+                if (selectedImageBase64 != null) {
+                    Box(
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .size(60.dp)
+                    ) {
+                        val imageBitmap = remember(selectedImageBase64) {
+                            try {
+                                val bytes = Base64.getDecoder().decode(selectedImageBase64)
+                                Image.makeFromEncoded(bytes).toComposeImageBitmap()
+                            } catch (e: Exception) {
+                                null
+                            }
+                        }
+                        if (imageBitmap != null) {
+                            androidx.compose.foundation.Image(
+                                bitmap = imageBitmap,
+                                contentDescription = "Preview",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .border(1.dp, Color(0xFF444444), RoundedCornerShape(4.dp))
+                            )
+                            Surface(
+                                color = Color.Black.copy(alpha = 0.6f),
+                                shape = RoundedCornerShape(4.dp),
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = 8.dp, y = (-8).dp)
+                                    .size(20.dp)
+                                    .clickable { onClearImage() }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Clear",
+                                    tint = Color.White,
+                                    modifier = Modifier.padding(4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+
                 // 顶部：添加上下文按钮
                 Row(
                     modifier = Modifier
@@ -112,7 +168,11 @@ fun BottomInputArea(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .clickable { onSelectImage() }
+                            .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
@@ -141,6 +201,12 @@ fun BottomInputArea(
                     modifier = Modifier
                         .fillMaxWidth()
                         .onPreviewKeyEvent {
+                            if (it.key == Key.V && (it.isCtrlPressed || it.isMetaPressed) && it.type == KeyEventType.KeyDown) {
+                                if (onPasteImage()) {
+                                    return@onPreviewKeyEvent true
+                                }
+                            }
+
                             println("key:${it.key} type:${it.type} isShiftPressed:${it.isShiftPressed}")
                             if (it.key == Key.Enter && it.type == KeyEventType.KeyUp) {
                                 if (it.isShiftPressed) {
@@ -323,7 +389,8 @@ fun BottomInputArea(
                     IconButton(
                         onClick = onSend,
                         modifier = Modifier.size(32.dp),
-                        enabled = inputText.text.isNotBlank() && !isLoading
+                        enabled = (inputText.text.isNotBlank() || selectedImageBase64 != null) && !isLoading
+
                     ) {
                         if (isLoading) {
                             CircularProgressIndicator(
@@ -335,7 +402,8 @@ fun BottomInputArea(
                             Icon(
                                 imageVector = Icons.Default.ArrowForward,
                                 contentDescription = "Send",
-                                tint = if (inputText.text.isNotBlank()) Color(0xFFBBBBBB) else Color(0xFF444444)
+                                tint = if (inputText.text.isNotBlank() || selectedImageBase64 != null) Color(0xFFBBBBBB) else Color(0xFF444444)
+
                             )
                         }
                     }

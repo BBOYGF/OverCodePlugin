@@ -5,5 +5,6 @@ package com.github.bboygf.over_code.po
  */
 data class LLMMessage(
     val role: String,  // "user" | "assistant" | "system"
-    val content: String
+    val content: String,
+    val images: List<String> = emptyList() // 存储 Base64 或 URL
 )

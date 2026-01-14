@@ -1,6 +1,8 @@
 package com.github.bboygf.over_code.llm
 
 import com.github.bboygf.over_code.po.LLMMessage
+import com.github.bboygf.over_code.po.OpenAIContentPart
+import com.github.bboygf.over_code.po.OpenAIImageUrl
 import com.github.bboygf.over_code.po.OpenAIMessage
 import com.github.bboygf.over_code.po.OpenAIRequest
 import com.github.bboygf.over_code.po.OpenAIResponse
@@ -23,6 +25,10 @@ import io.ktor.utils.io.readUTF8Line
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.encodeToJsonElement
 
 /**
  * OpenAI 兼容的 LLM Provider
@@ -45,16 +51,45 @@ class OpenAICompatibleProvider(
                 isLenient = true
             })
         }
-        install(HttpTimeout) { requestTimeoutMillis = 60000 }
+        install(HttpTimeout) { requestTimeoutMillis = 100000 }
     }
 
     override suspend fun chat(messages: List<LLMMessage>): String {
         return withContext(Dispatchers.IO) {
-            val messageDtos = messages.map { message ->
-                OpenAIMessage(
-                    role = message.role,
-                    content = message.content,
-                )
+            val messageDtos = messages.map { msg ->
+                if (msg.images.isEmpty()) {
+                    OpenAIMessage(
+                        role = msg.role,
+                        content = JsonPrimitive(msg.content),
+                    )
+                } else {
+                    val contentList = mutableListOf<JsonElement>()
+                    if (msg.content.isNotEmpty()) {
+                        contentList.add(
+                            Json.encodeToJsonElement(
+                                OpenAIContentPart(type = "text", text = msg.content)
+                            )
+                        )
+                    }
+                    msg.images.forEach { imgData ->
+                        // 自动判断是否需要加 base64 前缀 (如果已经是 URL 则不用)
+                        val formattedUrl = if (imgData.startsWith("http")) imgData else "data:image/jpeg;base64,$imgData"
+
+                        contentList.add(
+                            Json.encodeToJsonElement(
+                                OpenAIContentPart(
+                                    type = "image_url",
+                                    image_url = OpenAIImageUrl(url = formattedUrl)
+                                )
+                            )
+                        )
+
+                    }
+                    OpenAIMessage(
+                        role = msg.role,
+                        content = JsonArray(contentList) // 包装成 JsonArray
+                    )
+                }
             }
             val requestBody = OpenAIRequest(
                 model = model,
@@ -67,7 +102,12 @@ class OpenAICompatibleProvider(
                     contentType(ContentType.Application.Json)
                     setBody(requestBody)
                 }.body()
-                return@withContext response.choices.first().message?.content ?: ""
+                val content: String = when (val c = response.choices.first().message?.content) {
+                    is JsonPrimitive -> c.content // 如果是简单字符串
+                    is JsonArray -> "" // 响应流中通常不包含图片数组，暂忽略
+                    else -> "" // 如果是 JsonNull 或不存在
+                }
+                return@withContext content
             } catch (e: Exception) {
                 throw LLMException("调用 LLM API 失败: ${e.message}", e)
             }
@@ -79,11 +119,40 @@ class OpenAICompatibleProvider(
      */
     override suspend fun chatStream(messages: List<LLMMessage>, onChunk: (String) -> Unit) {
         withContext(Dispatchers.IO) {
-            val messageDtos = messages.map { message ->
-                OpenAIMessage(
-                    role = message.role,
-                    content = message.content,
-                )
+            val messageDtos = messages.map { msg ->
+                if (msg.images.isEmpty()) {
+                    OpenAIMessage(
+                        role = msg.role,
+                        content = JsonPrimitive(msg.content),
+                    )
+                } else {
+                    val contentList = mutableListOf<JsonElement>()
+                    if (msg.content.isNotEmpty()) {
+                        contentList.add(
+                            Json.encodeToJsonElement(
+                                OpenAIContentPart(type = "text", text = msg.content)
+                            )
+                        )
+                    }
+                    msg.images.forEach { imgData ->
+                        // 自动判断是否需要加 base64 前缀 (如果已经是 URL 则不用)
+                        val formattedUrl = if (imgData.startsWith("http")) imgData else "data:image/jpeg;base64,$imgData"
+
+                        contentList.add(
+                            Json.encodeToJsonElement(
+                                OpenAIContentPart(
+                                    type = "image_url",
+                                    image_url = OpenAIImageUrl(url = formattedUrl)
+                                )
+                            )
+                        )
+
+                    }
+                    OpenAIMessage(
+                        role = msg.role,
+                        content = JsonArray(contentList) // 包装成 JsonArray
+                    )
+                }
             }
             val requestBody = OpenAIRequest(
                 model = model,
@@ -120,13 +189,16 @@ class OpenAICompatibleProvider(
                             // 建议使用类成员变量或全局单例 Json，这里为了演示直接调用
                             val responseObj = Json { ignoreUnknownKeys = true }.decodeFromString<OpenAIResponse>(line)
                             val delta = responseObj.choices.firstOrNull()?.delta
-                            val content = delta?.content
+                            val content: String? = when (val c = delta?.content) {
+                                is JsonPrimitive -> c.content // 如果是简单字符串
+                                is JsonArray -> "" // 响应流中通常不包含图片数组，暂忽略
+                                else -> null // 如果是 JsonNull 或不存在
+                            }
                             val reasoning = delta?.reasoning_content
                             logger.debug("思考: $reasoning")
                             if (!content.isNullOrEmpty()) {
                                 onChunk(content)
                             }
-
                             // 检查是否结束 (部分模型可能通过 finish_reason 标记)
                             if (responseObj.choices.firstOrNull()?.finish_reason != null) {
                                 // 通常可以忽略，或者在这里 break

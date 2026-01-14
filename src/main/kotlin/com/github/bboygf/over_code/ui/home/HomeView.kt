@@ -37,6 +37,9 @@ import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
+import com.intellij.openapi.fileChooser.FileChooser
+import com.intellij.openapi.fileChooser.FileChooserDescriptor
+
 import com.intellij.ui.content.ContentFactory
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -267,7 +270,8 @@ fun OverCodeChatUI(project: Project? = null) {
                 onInputChange = { inputText = it },
                 isLoading = viewModel.isLoading,
                 onSend = {
-                    if (inputText.text.isNotBlank()) {
+                    if (inputText.text.isNotBlank() || viewModel.selectedImageBase64 != null) {
+
                         val userInput = inputText
                         inputText = TextFieldValue("")
                         viewModel.sendMessage(userInput.text) {
@@ -288,8 +292,23 @@ fun OverCodeChatUI(project: Project? = null) {
                 backgroundColor = surfaceColor,
                 textColor = textPrimaryColor,
                 isChecked = viewModel.loadHistory,
-                onLoadHistoryChange = { viewModel.onLoadHistoryChange(it) }
+                onLoadHistoryChange = { viewModel.onLoadHistoryChange(it) },
+                selectedImageBase64 = viewModel.selectedImageBase64,
+                onClearImage = { viewModel.setSelectedImage(null) },
+                onPasteImage = { viewModel.checkClipboardForImage() },
+                onSelectImage = {
+                    val descriptor = FileChooserDescriptor(true, false, false, false, false, false)
+                        .withTitle("选择图片")
+                        .withDescription("支持 png, jpg, jpeg, bmp 格式")
+                    
+                    FileChooser.chooseFile(descriptor, project, null)?.let { file ->
+                        val bytes = file.contentsToByteArray()
+                        val base64 = Base64.getEncoder().encodeToString(bytes)
+                        viewModel.setSelectedImage(base64)
+                    }
+                }
             )
+
         }
     }
 }

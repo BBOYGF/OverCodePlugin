@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
+import com.github.bboygf.over_code.utils.ImageUtils
+
 
 /**
  * 聊天界面的ViewModel
@@ -56,6 +58,10 @@ class HomeViewModel(
         private set
 
     var chatMode by mutableStateOf("计划模式") // "计划模式" 或 "执行模式"
+
+    var selectedImageBase64 by mutableStateOf<String?>(null)
+        private set
+
 
     // 使用 SharedFlow 发送单次执行的事件
     private val _scrollEvents = MutableSharedFlow<Int>()
@@ -136,11 +142,35 @@ class HomeViewModel(
         messages = emptyList()
     }
 
+
     /**
-     * 发送用户消息并获取AI响应
+     * 设置当前选中的图片
      */
+    fun setSelectedImage(base64: String?) {
+        selectedImageBase64 = base64
+    }
+
+    /**
+     * 尝试从剪贴板读取图片
+     */
+    fun checkClipboardForImage(): Boolean {
+        val base64 = ImageUtils.getClipboardImageBase64()
+        if (base64 != null) {
+            selectedImageBase64 = base64
+            return true
+        }
+        return false
+    }
+
+
+
     fun sendMessage(userInput: String, onScrollToBottom: () -> Unit) {
-        if (userInput.isBlank() || isLoading) return
+        if (userInput.isBlank() && selectedImageBase64 == null || isLoading) return
+
+        isLoading = true
+        val currentImage = selectedImageBase64
+        selectedImageBase64 = null
+
 
         isLoading = true
 
@@ -160,12 +190,15 @@ class HomeViewModel(
         dbService?.saveMessage(userMessage, currentSessionId)
 
         // 构建历史消息
-        val llmMessages = msgList.map { msg ->
+        // 构建历史消息
+        val llmMessages = msgList.mapIndexed { index, msg ->
             LLMMessage(
                 role = if (msg.isUser) "user" else "assistant",
-                content = msg.content
+                content = msg.content,
+                images = if (msg.isUser && index == msgList.size - 1 && currentImage != null) listOf(currentImage) else emptyList()
             )
         }
+
 
         // 创建AI消息占位符
         val aiMessageId = (System.currentTimeMillis() + 1).toString()
