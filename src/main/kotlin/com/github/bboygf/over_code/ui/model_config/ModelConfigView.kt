@@ -506,7 +506,7 @@ fun ModelConfigDialog(
     var isActive by remember { mutableStateOf(config?.isActive ?: false) }
     var showProviderMenu by remember { mutableStateOf(false) }
 
-    val providers = listOf("openai", "ollama", "zhipu", "qwen", "deepseek", "moonshot", "custom")
+    val providers = listOf("openai","gemini", "ollama", "zhipu", "qwen", "deepseek", "moonshot", "custom")
 
     // 预设配置
     LaunchedEffect(provider) {
