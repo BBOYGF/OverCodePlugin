@@ -270,7 +270,7 @@ fun OverCodeChatUI(project: Project? = null) {
                 onInputChange = { inputText = it },
                 isLoading = viewModel.isLoading,
                 onSend = {
-                    if (inputText.text.isNotBlank() || viewModel.selectedImageBase64 != null) {
+                    if (inputText.text.isNotBlank() || viewModel.selectedImageBase64List.isEmpty() != null) {
 
                         val userInput = inputText
                         inputText = TextFieldValue("")
@@ -293,18 +293,18 @@ fun OverCodeChatUI(project: Project? = null) {
                 textColor = textPrimaryColor,
                 isChecked = viewModel.loadHistory,
                 onLoadHistoryChange = { viewModel.onLoadHistoryChange(it) },
-                selectedImageBase64 = viewModel.selectedImageBase64,
-                onClearImage = { viewModel.setSelectedImage(null) },
+                selectedImageBase64List = viewModel.selectedImageBase64List,
+                onDeleteImage = {base64 -> viewModel.removeImage(base64) },
                 onPasteImage = { viewModel.checkClipboardForImage() },
                 onSelectImage = {
-                    val descriptor = FileChooserDescriptor(true, false, false, false, false, false)
+                    val descriptor = FileChooserDescriptor(true, false, false, false, false, true)
                         .withTitle("选择图片")
                         .withDescription("支持 png, jpg, jpeg, bmp 格式")
-                    
-                    FileChooser.chooseFile(descriptor, project, null)?.let { file ->
+                        .withExtensionFilter("图片","png", "jpg", "jpeg","bmp")
+                    FileChooser.chooseFiles(descriptor, project, null).forEach { file ->
                         val bytes = file.contentsToByteArray()
                         val base64 = Base64.getEncoder().encodeToString(bytes)
-                        viewModel.setSelectedImage(base64)
+                        viewModel.addImage(base64)
                     }
                 }
             )

@@ -1,6 +1,7 @@
 package com.github.bboygf.over_code.ui.home
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.github.bboygf.over_code.llm.LLMService
@@ -59,7 +60,7 @@ class HomeViewModel(
 
     var chatMode by mutableStateOf("计划模式") // "计划模式" 或 "执行模式"
 
-    var selectedImageBase64 by mutableStateOf<String?>(null)
+    var selectedImageBase64List = mutableStateListOf<String>()
         private set
 
 
@@ -146,30 +147,36 @@ class HomeViewModel(
     /**
      * 设置当前选中的图片
      */
-    fun setSelectedImage(base64: String?) {
-        selectedImageBase64 = base64
+    fun addImage(base64: String) {
+        if (!selectedImageBase64List.contains(base64)) {
+            selectedImageBase64List.add(base64)
+        }
     }
-
+    /**
+     * 删除图片
+     */
+    fun removeImage(base64: String) {
+        selectedImageBase64List.remove(base64)
+    }
     /**
      * 尝试从剪贴板读取图片
      */
     fun checkClipboardForImage(): Boolean {
         val base64 = ImageUtils.getClipboardImageBase64()
         if (base64 != null) {
-            selectedImageBase64 = base64
+            selectedImageBase64List += base64
             return true
         }
         return false
     }
 
 
-
     fun sendMessage(userInput: String, onScrollToBottom: () -> Unit) {
-        if (userInput.isBlank() && selectedImageBase64 == null || isLoading) return
+        if (userInput.isBlank() && selectedImageBase64List == null || isLoading) return
 
         isLoading = true
-        val currentImage = selectedImageBase64
-        selectedImageBase64 = null
+        val currentImageList = selectedImageBase64List.toList()
+        selectedImageBase64List.clear()
 
 
         isLoading = true
@@ -195,7 +202,7 @@ class HomeViewModel(
             LLMMessage(
                 role = if (msg.isUser) "user" else "assistant",
                 content = msg.content,
-                images = if (msg.isUser && index == msgList.size - 1 && currentImage != null) listOf(currentImage) else emptyList()
+                images = if (msg.isUser && index == msgList.size - 1) currentImageList else emptyList()
             )
         }
 

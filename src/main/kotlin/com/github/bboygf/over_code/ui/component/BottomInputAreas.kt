@@ -79,8 +79,8 @@ fun BottomInputArea(
     textColor: Color,
     isChecked: Boolean,
     onLoadHistoryChange: (Boolean) -> Unit,
-    selectedImageBase64: String? = null,
-    onClearImage: () -> Unit = {},
+    selectedImageBase64List: MutableList<String>,
+    onDeleteImage: (String) -> Unit = {},
     onPasteImage: () -> Boolean = { false },
     onSelectImage: () -> Unit = {}
 ) {
@@ -106,7 +106,6 @@ fun BottomInputArea(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-
                     .border(
                         3.dp, if (focused) {
                             Color(0xff3574F0)
@@ -117,43 +116,47 @@ fun BottomInputArea(
                     .padding(8.dp)
             ) {
                 // 预览图片
-                if (selectedImageBase64 != null) {
-                    Box(
-                        modifier = Modifier
-                            .padding(8.dp)
-                            .size(60.dp)
-                    ) {
-                        val imageBitmap = remember(selectedImageBase64) {
-                            try {
-                                val bytes = Base64.getDecoder().decode(selectedImageBase64)
-                                Image.makeFromEncoded(bytes).toComposeImageBitmap()
-                            } catch (e: Exception) {
-                                null
-                            }
-                        }
-                        if (imageBitmap != null) {
-                            androidx.compose.foundation.Image(
-                                bitmap = imageBitmap,
-                                contentDescription = "Preview",
+                if (selectedImageBase64List.isNotEmpty()) {
+                    Row {
+                        selectedImageBase64List.forEach { base64Str ->
+                            Box(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .border(1.dp, Color(0xFF444444), RoundedCornerShape(4.dp))
-                            )
-                            Surface(
-                                color = Color.Black.copy(alpha = 0.6f),
-                                shape = RoundedCornerShape(4.dp),
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .offset(x = 8.dp, y = (-8).dp)
-                                    .size(20.dp)
-                                    .clickable { onClearImage() }
+                                    .padding(8.dp)
+                                    .size(60.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Clear",
-                                    tint = Color.White,
-                                    modifier = Modifier.padding(4.dp)
-                                )
+                                val imageBitmap = remember(base64Str) {
+                                    try {
+                                        val bytes = Base64.getDecoder().decode(base64Str)
+                                        Image.makeFromEncoded(bytes).toComposeImageBitmap()
+                                    } catch (e: Exception) {
+                                        null
+                                    }
+                                }
+                                if (imageBitmap != null) {
+                                    androidx.compose.foundation.Image(
+                                        bitmap = imageBitmap,
+                                        contentDescription = "Preview",
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .border(1.dp, Color(0xFF444444), RoundedCornerShape(4.dp))
+                                    )
+                                    Surface(
+                                        color = Color.Black.copy(alpha = 0.6f),
+                                        shape = RoundedCornerShape(4.dp),
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .offset(x = 8.dp, y = (-8).dp)
+                                            .size(20.dp)
+                                            .clickable { onDeleteImage(base64Str) }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Clear",
+                                            tint = Color.White,
+                                            modifier = Modifier.padding(4.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -389,7 +392,7 @@ fun BottomInputArea(
                     IconButton(
                         onClick = onSend,
                         modifier = Modifier.size(32.dp),
-                        enabled = (inputText.text.isNotBlank() || selectedImageBase64 != null) && !isLoading
+                        enabled = (inputText.text.isNotBlank() || selectedImageBase64List != null) && !isLoading
 
                     ) {
                         if (isLoading) {
@@ -402,7 +405,9 @@ fun BottomInputArea(
                             Icon(
                                 imageVector = Icons.Default.ArrowForward,
                                 contentDescription = "Send",
-                                tint = if (inputText.text.isNotBlank() || selectedImageBase64 != null) Color(0xFFBBBBBB) else Color(0xFF444444)
+                                tint = if (inputText.text.isNotBlank() || selectedImageBase64List != null) Color(
+                                    0xFFBBBBBB
+                                ) else Color(0xFF444444)
 
                             )
                         }
