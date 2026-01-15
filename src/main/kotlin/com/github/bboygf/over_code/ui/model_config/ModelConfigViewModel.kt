@@ -125,6 +125,7 @@ class ModelConfigViewModel(
     fun getProviderPreset(provider: String): Pair<String, String> {
         return when (provider) {
             "openai" -> "https://api.openai.com/v1" to "gpt-3.5-turbo"
+            "gemini" -> "https://generativelanguage.googleapis.com/v1beta/models" to "gemini-3-flash-preview"
             "ollama" -> "http://localhost:11434" to "llama2"
             "zhipu" -> "https://open.bigmodel.cn/api/paas/v4" to "glm-4"
             "qwen" -> "https://dashscope.aliyuncs.com/compatible-mode/v1" to "qwen-plus"

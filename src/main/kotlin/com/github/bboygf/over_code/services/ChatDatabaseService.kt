@@ -27,7 +27,7 @@ class ChatDatabaseService(private val project: Project) {
 
     init {
         // 获取插件数据目录
-        val pluginDataDir = File(project.basePath+"/.idea", ".over_code")
+        val pluginDataDir = File(project.basePath + "/.idea", ".over_code")
         if (!pluginDataDir.exists()) {
             pluginDataDir.mkdirs()
         }
@@ -225,6 +225,7 @@ class ChatDatabaseService(private val project: Project) {
                 it[isActive] = config.isActive
                 it[createdAt] = now
                 it[updatedAt] = now
+                it[useProxy] = config.useProxy
             }
         }
         return modelId
@@ -250,6 +251,7 @@ class ChatDatabaseService(private val project: Project) {
                 it[modelName] = config.modelName
                 it[isActive] = config.isActive
                 it[updatedAt] = System.currentTimeMillis()
+                it[useProxy] = config.useProxy
             }
         }
     }
@@ -280,7 +282,8 @@ class ChatDatabaseService(private val project: Project) {
                         modelName = row[ModelConfigs.modelName],
                         isActive = row[ModelConfigs.isActive],
                         createdAt = row[ModelConfigs.createdAt],
-                        updatedAt = row[ModelConfigs.updatedAt]
+                        updatedAt = row[ModelConfigs.updatedAt],
+                        useProxy = row[ModelConfigs.useProxy]
                     )
                 }
         }
@@ -305,7 +308,8 @@ class ChatDatabaseService(private val project: Project) {
                         modelName = row[ModelConfigs.modelName],
                         isActive = row[ModelConfigs.isActive],
                         createdAt = row[ModelConfigs.createdAt],
-                        updatedAt = row[ModelConfigs.updatedAt]
+                        updatedAt = row[ModelConfigs.updatedAt],
+                        useProxy = row[ModelConfigs.useProxy]
                     )
                 }
         }
@@ -529,9 +533,9 @@ class ChatDatabaseService(private val project: Project) {
      * 渲染 Prompt 模板（替换占位符）
      */
     fun renderPrompt(key: String, variables: Map<String, String>): String {
-        val template = getPromptTemplateByKey(key)?.template 
+        val template = getPromptTemplateByKey(key)?.template
             ?: throw IllegalArgumentException("Prompt template not found: $key")
-        
+
         var result = template
         variables.forEach { (varKey, value) ->
             result = result.replace("{{$varKey}}", value)

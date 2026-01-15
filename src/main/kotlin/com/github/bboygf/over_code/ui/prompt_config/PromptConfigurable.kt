@@ -1,10 +1,13 @@
 package com.github.bboygf.over_code.ui.prompt_config
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
@@ -22,12 +25,12 @@ import java.awt.Dimension
 import javax.swing.JComponent
 
 class PromptConfigurable(private val project: Project) : Configurable {
-    
+
     private val dbService = ChatDatabaseService.getInstance(project)
     private var composePanel: ComposePanel? = null
-    
+
     override fun getDisplayName(): String = "Over Code Prompt 模板"
-    
+
     override fun createComponent(): JComponent {
         composePanel = ComposePanel().apply {
             preferredSize = Dimension(900, 700)
@@ -44,13 +47,13 @@ class PromptConfigurable(private val project: Project) : Configurable {
         }
         return composePanel!!
     }
-    
+
     override fun isModified(): Boolean = false
-    
+
     override fun apply() {}
-    
+
     override fun reset() {}
-    
+
     override fun disposeUIResources() {
         composePanel = null
     }
@@ -59,7 +62,7 @@ class PromptConfigurable(private val project: Project) : Configurable {
 @Composable
 fun PromptConfigScreen(dbService: ChatDatabaseService) {
     val viewModel = remember { PromptConfigViewModel(dbService) }
-    
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -71,14 +74,14 @@ fun PromptConfigScreen(dbService: ChatDatabaseService) {
             color = Color.White,
             modifier = Modifier.padding(bottom = 8.dp)
         )
-        
+
         Text(
             text = "管理 AI 操作使用的提示词模板，支持变量占位符：{{code}}, {{language}}, {{fileName}}, {{text}}",
             style = MaterialTheme.typography.bodySmall,
             color = Color.Gray,
             modifier = Modifier.padding(bottom = 16.dp)
         )
-        
+
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -86,25 +89,25 @@ fun PromptConfigScreen(dbService: ChatDatabaseService) {
             Button(onClick = { viewModel.showAddDialog() }) {
                 Text("添加模板")
             }
-            
+
             Button(
                 onClick = { viewModel.startEditPrompt() },
-                enabled = viewModel.selectedIndex != null && 
-                         !viewModel.prompts.getOrNull(viewModel.selectedIndex ?: -1)?.isBuiltIn!!
+                enabled = viewModel.selectedIndex != null &&
+                        !viewModel.prompts.getOrNull(viewModel.selectedIndex ?: -1)?.isBuiltIn!!
             ) {
                 Text("编辑")
             }
-            
+
             Button(
                 onClick = { viewModel.deleteSelectedPrompt() },
-                enabled = viewModel.selectedIndex != null && 
-                         !viewModel.prompts.getOrNull(viewModel.selectedIndex ?: -1)?.isBuiltIn!!,
+                enabled = viewModel.selectedIndex != null &&
+                        !viewModel.prompts.getOrNull(viewModel.selectedIndex ?: -1)?.isBuiltIn!!,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB00020))
             ) {
                 Text("删除")
             }
         }
-        
+
         Card(
             modifier = Modifier.fillMaxWidth().weight(1f),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF3C3F41))
@@ -126,7 +129,7 @@ fun PromptConfigScreen(dbService: ChatDatabaseService) {
                         Text("类型", color = Color.White, modifier = Modifier.weight(0.8f))
                     }
                 }
-                
+
                 itemsIndexed(viewModel.prompts) { index, prompt ->
                     PromptRow(
                         prompt = prompt,
@@ -137,7 +140,7 @@ fun PromptConfigScreen(dbService: ChatDatabaseService) {
             }
         }
     }
-    
+
     if (viewModel.showAddDialog) {
         PromptEditDialog(
             prompt = null,
@@ -147,7 +150,7 @@ fun PromptConfigScreen(dbService: ChatDatabaseService) {
             }
         )
     }
-    
+
     viewModel.editingPrompt?.let { prompt ->
         PromptEditDialog(
             prompt = prompt,
@@ -211,8 +214,17 @@ fun PromptEditDialog(
     var key by remember { mutableStateOf(prompt?.key ?: "") }
     var template by remember { mutableStateOf(prompt?.template ?: "") }
     var description by remember { mutableStateOf(prompt?.description ?: "") }
-    
+    val dialogShape = RoundedCornerShape(12.dp)
     AlertDialog(
+        modifier = Modifier
+            .border(
+                width = 1.dp,
+                color = Color(0xFF3C3D3E),
+                shape = dialogShape // 必须与下面的 shape 一致
+            ),
+        shape = dialogShape,
+        containerColor = Color(0xFF18191A),
+
         onDismissRequest = onDismiss,
         title = { Text(if (prompt == null) "添加 Prompt 模板" else "编辑 Prompt 模板") },
         text = {
@@ -224,33 +236,85 @@ fun PromptEditDialog(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("模板名称") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White.copy(0.8f),
+                        focusedBorderColor = Color.White,
+                        focusedLabelColor = Color.White,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.8f),
+                        unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
+                        selectionColors = TextSelectionColors(
+                            handleColor = Color.Black,
+                            backgroundColor = Color.White.copy(alpha = 0.4f)
+                        ),
+                        cursorColor = Color.White,
+                    ),
                 )
-                
+
                 OutlinedTextField(
                     value = key,
                     onValueChange = { key = it },
                     label = { Text("Key (唯一标识)") },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = prompt == null
+                    enabled = prompt == null,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White.copy(0.8f),
+                        focusedBorderColor = Color.White,
+                        focusedLabelColor = Color.White,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.8f),
+                        unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
+                        selectionColors = TextSelectionColors(
+                            handleColor = Color.Black,
+                            backgroundColor = Color.White.copy(alpha = 0.4f)
+                        ),
+                        cursorColor = Color.White,
+                    ),
                 )
-                
+
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
                     label = { Text("描述") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White.copy(0.8f),
+                        focusedBorderColor = Color.White,
+                        focusedLabelColor = Color.White,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.8f),
+                        unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
+                        selectionColors = TextSelectionColors(
+                            handleColor = Color.Black,
+                            backgroundColor = Color.White.copy(alpha = 0.4f)
+                        ),
+                        cursorColor = Color.White,
+                    ),
                 )
-                
+
                 OutlinedTextField(
                     value = template,
                     onValueChange = { template = it },
                     label = { Text("Prompt 模板") },
                     modifier = Modifier.fillMaxWidth().height(200.dp),
                     maxLines = 10,
-                    minLines = 8
+                    minLines = 8,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White.copy(0.8f),
+                        focusedBorderColor = Color.White,
+                        focusedLabelColor = Color.White,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.8f),
+                        unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
+                        selectionColors = TextSelectionColors(
+                            handleColor = Color.Black,
+                            backgroundColor = Color.White.copy(alpha = 0.4f)
+                        ),
+                        cursorColor = Color.White,
+                    ),
                 )
-                
+
                 Text(
                     "可用变量: {{code}}, {{language}}, {{fileName}}, {{text}}",
                     style = MaterialTheme.typography.bodySmall,

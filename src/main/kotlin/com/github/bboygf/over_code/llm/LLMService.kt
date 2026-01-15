@@ -16,6 +16,7 @@ class LLMService(private val project: Project) {
 
     // 缓存当前的 Provider 实例，避免每次对话都重新创建 HttpClient
     private var cachedProvider: LLMProvider? = null
+
     // 用于记录缓存时的配置指纹（ID 或 Hash），判断配置是否变更
     private var cachedConfigSignature: String? = null
 
@@ -26,7 +27,8 @@ class LLMService(private val project: Project) {
         val config = dbService.getActiveModelConfig() ?: return null
 
         // 生成当前配置的“指纹”，用于检测配置是否被用户修改了
-        val currentSignature = "${config.name}-${config.provider}-${config.modelName}-${config.apiKey}-${config.baseUrl}"
+        val currentSignature =
+            "${config.name}-${config.provider}-${config.modelName}-${config.apiKey}-${config.baseUrl}-${config.useProxy}"
 
         // 如果配置没有变且缓存存在，直接返回（性能优化）
         if (cachedProvider != null && cachedConfigSignature == currentSignature) {
@@ -77,8 +79,10 @@ class LLMService(private val project: Project) {
             "gemini", "google" -> {
                 require(config.apiKey.isNotBlank()) { "使用 Gemini 必须配置 API Key" }
                 GeminiProvider(
+                    baseUrl = safeBaseUrl,
                     apiKey = config.apiKey,
-                    model = config.modelName.ifBlank { "gemini-1.5-flash" } // 默认模型
+                    model = config.modelName.ifBlank { "gemini-3-flash-preview" },// 默认模型
+                    useProxy = config.useProxy,
                 )
             }
 
@@ -92,7 +96,8 @@ class LLMService(private val project: Project) {
                 OpenAICompatibleProvider(
                     baseUrl = safeBaseUrl,
                     apiKey = config.apiKey,
-                    model = config.modelName
+                    model = config.modelName,
+                    useProxy = config.useProxy,
                 )
             }
 
@@ -102,7 +107,8 @@ class LLMService(private val project: Project) {
                 OpenAICompatibleProvider(
                     baseUrl = safeBaseUrl,
                     apiKey = config.apiKey,
-                    model = config.modelName
+                    model = config.modelName,
+                    useProxy = config.useProxy,
                 )
             }
         }

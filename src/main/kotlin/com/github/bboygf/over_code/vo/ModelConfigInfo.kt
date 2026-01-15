@@ -12,5 +12,6 @@ data class ModelConfigInfo(
     val modelName: String,
     val isActive: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val useProxy: Boolean = false,
 )

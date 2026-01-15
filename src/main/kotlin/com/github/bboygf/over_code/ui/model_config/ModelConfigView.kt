@@ -3,9 +3,12 @@ package com.github.bboygf.over_code.ui.model_config
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
@@ -22,6 +25,7 @@ import com.github.bboygf.over_code.vo.ModelConfigInfo
 import com.github.bboygf.over_code.vo.PromptInfo
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.project.Project
+import org.jetbrains.kotlin.utils.addToStdlib.constant
 import java.awt.Dimension
 import javax.swing.JComponent
 
@@ -419,6 +423,7 @@ fun ModelConfigScreen(dbService: ChatDatabaseService) {
                         Text("模型", color = Color.White, modifier = Modifier.weight(1.5f))
                         Text("Base URL", color = Color.White, modifier = Modifier.weight(2f))
                         Text("当前使用", color = Color.White, modifier = Modifier.weight(0.8f))
+                        Text("代理", color = Color.White, modifier = Modifier.weight(0.8f))
                     }
                 }
 
@@ -488,6 +493,11 @@ fun ModelConfigRow(
             color = Color(0xFF4CAF50),
             modifier = Modifier.weight(0.8f)
         )
+        Text(
+            if (config.useProxy) "✓" else "",
+            color = Color(0xFF4CAF50),
+            modifier = Modifier.weight(0.8f)
+        )
     }
 }
 
@@ -505,8 +515,9 @@ fun ModelConfigDialog(
     var modelName by remember { mutableStateOf(config?.modelName ?: "gpt-3.5-turbo") }
     var isActive by remember { mutableStateOf(config?.isActive ?: false) }
     var showProviderMenu by remember { mutableStateOf(false) }
+    var useProxy by remember { mutableStateOf(config?.useProxy ?: false) }
 
-    val providers = listOf("openai","gemini", "ollama", "zhipu", "qwen", "deepseek", "moonshot", "custom")
+    val providers = listOf("openai", "gemini", "ollama", "zhipu", "qwen", "deepseek", "moonshot", "custom")
 
     // 预设配置
     LaunchedEffect(provider) {
@@ -521,19 +532,41 @@ fun ModelConfigDialog(
             }
         }
     }
-
+    val dialogShape = RoundedCornerShape(12.dp)
     AlertDialog(
+        modifier = Modifier.padding(8.dp)
+            .border(
+                width = 1.dp,
+                color = Color(0xFF3C3D3E),
+                shape = dialogShape // 必须与下面的 shape 一致
+            ),
+        shape = dialogShape,
+        containerColor = Color(0xFF18191A),
         onDismissRequest = onDismiss,
-        title = { Text(if (config == null) "添加模型" else "编辑模型") },
+        title = { Text(if (config == null) "添加模型" else "编辑模型", color = Color.White) },
         text = {
             Column(
-                modifier = Modifier.width(500.dp).padding(8.dp),
+                modifier = Modifier.width(500.dp).padding(8.dp)
+                    .background(Color(0xFF18191A)),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("配置名称") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White.copy(0.8f),
+                        focusedBorderColor = Color.White,
+                        focusedLabelColor = Color.White,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.8f),
+                        unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
+                        selectionColors = TextSelectionColors(
+                            handleColor = Color.Black,
+                            backgroundColor = Color.White.copy(alpha = 0.4f)
+                        ),
+                        cursorColor = Color.White,
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -542,7 +575,11 @@ fun ModelConfigDialog(
                     Text("提供商:", style = MaterialTheme.typography.bodySmall)
                     Button(
                         onClick = { showProviderMenu = !showProviderMenu },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF3574F0),
+                            contentColor = Color.White
+                        ),
                     ) {
                         Text(provider)
                     }
@@ -573,6 +610,19 @@ fun ModelConfigDialog(
                     value = baseUrl,
                     onValueChange = { baseUrl = it },
                     label = { Text("Base URL") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White.copy(0.8f),
+                        focusedBorderColor = Color.White,
+                        focusedLabelColor = Color.White,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.8f),
+                        unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
+                        selectionColors = TextSelectionColors(
+                            handleColor = Color.Black,
+                            backgroundColor = Color.White.copy(alpha = 0.4f)
+                        ),
+                        cursorColor = Color.White,
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -580,6 +630,19 @@ fun ModelConfigDialog(
                     value = apiKey,
                     onValueChange = { apiKey = it },
                     label = { Text("API Key (可选)") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White.copy(0.8f),
+                        focusedBorderColor = Color.White,
+                        focusedLabelColor = Color.White,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.8f),
+                        unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
+                        selectionColors = TextSelectionColors(
+                            handleColor = Color.Black,
+                            backgroundColor = Color.White.copy(alpha = 0.4f)
+                        ),
+                        cursorColor = Color.White,
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -587,6 +650,19 @@ fun ModelConfigDialog(
                     value = modelName,
                     onValueChange = { modelName = it },
                     label = { Text("模型名称") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White.copy(0.8f),
+                        focusedBorderColor = Color.White,
+                        focusedLabelColor = Color.White,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.8f),
+                        unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
+                        selectionColors = TextSelectionColors(
+                            handleColor = Color.Black,
+                            backgroundColor = Color.White.copy(alpha = 0.4f)
+                        ),
+                        cursorColor = Color.White,
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -595,9 +671,26 @@ fun ModelConfigDialog(
                 ) {
                     Checkbox(
                         checked = isActive,
-                        onCheckedChange = { isActive = it }
+                        onCheckedChange = { isActive = it },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color(0xFF3574F0),
+                            uncheckedColor = Color.White.copy(alpha = 0.8f)
+                        )
                     )
-                    Text("设为当前使用的模型")
+                    Text("设为当前使用的模型", color = Color.White)
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = useProxy,
+                        onCheckedChange = { useProxy = it },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color(0xFF3574F0),
+                            uncheckedColor = Color.White.copy(alpha = 0.8f)
+                        )
+                    )
+                    Text("使用代理", color = Color.White)
                 }
 
                 Text(
@@ -609,6 +702,10 @@ fun ModelConfigDialog(
         },
         confirmButton = {
             Button(
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF3574F0),
+                    contentColor = Color.White
+                ),
                 onClick = {
                     if (name.isNotBlank() && modelName.isNotBlank()) {
                         onConfirm(
@@ -619,7 +716,8 @@ fun ModelConfigDialog(
                                 baseUrl = baseUrl,
                                 apiKey = apiKey,
                                 modelName = modelName,
-                                isActive = isActive
+                                isActive = isActive,
+                                useProxy = useProxy
                             )
                         )
                     }
@@ -629,7 +727,13 @@ fun ModelConfigDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFB00020),
+                    contentColor = Color.White
+                ),
+            ) {
                 Text("取消")
             }
         }

@@ -1,5 +1,8 @@
 package com.github.bboygf.over_code.po
 
+import org.jetbrains.exposed.dao.IntEntity
+import org.jetbrains.exposed.dao.IntEntityClass
+import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.dao.id.IntIdTable
 
 /**
@@ -36,6 +39,22 @@ object ModelConfigs : IntIdTable("model_configs") {
     val isActive = bool("is_active").default(false)
     val createdAt = long("created_at")
     val updatedAt = long("updated_at")
+    val useProxy = bool("use_proxy").default(false)
+}
+
+class ModelConfigEntity(id: EntityID<Int>) : IntEntity(id) {
+    companion object : IntEntityClass<ModelConfigEntity>(ModelConfigs)
+
+    var modelId by ModelConfigs.modelId
+    var name by ModelConfigs.name
+    var provider by ModelConfigs.provider
+    var baseUrl by ModelConfigs.baseUrl
+    var apiKey by ModelConfigs.apiKey
+    var modelName by ModelConfigs.modelName
+    var isActive by ModelConfigs.isActive
+    var createdAt by ModelConfigs.createdAt
+    var updatedAt by ModelConfigs.updatedAt
+    var useProxy by ModelConfigs.useProxy
 }
 
 /**

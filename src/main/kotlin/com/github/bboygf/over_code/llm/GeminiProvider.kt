@@ -11,15 +11,11 @@ import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
-import io.ktor.network.sockets.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.utils.io.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import java.net.Proxy
-import java.net.ProxySelector
-import java.net.URI
 
 /**
  * Google Gemini LLM Provider
@@ -27,16 +23,20 @@ import java.net.URI
  */
 class GeminiProvider(
     private val apiKey: String,
-    private val model: String = "gemini-2.5-flash"
+    private val model: String = "gemini-2.5-flash",
+    private val useProxy: Boolean,
+    private val baseUrl: String
 ) : LLMProvider {
 
     private val logger = thisLogger()
-    // Gemini 的 API 基础地址
-    private val baseUrl = "https://generativelanguage.googleapis.com/v1beta/models"
+
 
     private val client = HttpClient(CIO) {
-        engine {
-            configureProxy(this)
+        // 如果使用代理那么启动代理
+        if (useProxy) {
+            engine {
+                configureProxy(this)
+            }
         }
 
         install(ContentNegotiation) {
@@ -48,6 +48,7 @@ class GeminiProvider(
         }
         install(HttpTimeout) { requestTimeoutMillis = 60000 }
     }
+
     /**
      * 使用 Java 标准 ProxySelector 获取代理
      * IntelliJ 平台已覆写了默认的 Selector，因此这会自动应用 IDE 的设置
@@ -65,6 +66,7 @@ class GeminiProvider(
             logger.warn("GeminiProvider: 自动获取代理设置失败，将尝试直连", e)
         }
     }
+
     override suspend fun chat(messages: List<LLMMessage>): String {
         return withContext(Dispatchers.IO) {
             try {
@@ -164,7 +166,6 @@ class GeminiProvider(
 
             // 3. 映射角色 (Gemini 只有 "user" 和 "model")
             val role = if (msg.role == "assistant") "model" else "user"
-
             GeminiContent(role = role, parts = parts)
         }
         return GeminiRequest(contents = geminiContents)

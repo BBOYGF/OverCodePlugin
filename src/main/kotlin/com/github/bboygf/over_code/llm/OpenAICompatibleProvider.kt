@@ -9,7 +9,10 @@ import com.github.bboygf.over_code.po.OpenAIResponse
 import com.intellij.openapi.diagnostic.thisLogger
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.engine.ProxyBuilder
 import io.ktor.client.engine.cio.CIO
+import io.ktor.client.engine.cio.CIOEngineConfig
+import io.ktor.client.engine.http
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.header
@@ -37,13 +40,19 @@ import kotlinx.serialization.json.encodeToJsonElement
 class OpenAICompatibleProvider(
     private val baseUrl: String,
     private val apiKey: String,
-    private val model: String
+    private val model: String,
+    useProxy: Boolean
 ) : LLMProvider {
     /**
      * 日志
      */
     val logger = thisLogger()
     private val client = HttpClient(CIO) {
+        if (useProxy) {
+            engine {
+                configureProxy(this)
+            }
+        }
         install(ContentNegotiation) {
             json(Json {
                 ignoreUnknownKeys = true // 忽略响应中多余的字段（重要！）
@@ -53,7 +62,21 @@ class OpenAICompatibleProvider(
         }
         install(HttpTimeout) { requestTimeoutMillis = 100000 }
     }
+    /**
+     * 使用 Java 标准 ProxySelector 获取代理
+     * IntelliJ 平台已覆写了默认的 Selector，因此这会自动应用 IDE 的设置
+     */
+    private fun configureProxy(config: CIOEngineConfig) {
+        try {
+            // 后期改为从配置文件获取
+            val proxyUrl = "http://127.0.0.1:10808"
+            logger.info("GeminiProvider: 自动检测到 IDE 代理配置 -> $proxyUrl")
+            config.proxy = ProxyBuilder.http(proxyUrl)
 
+        } catch (e: Exception) {
+            logger.warn("GeminiProvider: 自动获取代理设置失败，将尝试直连", e)
+        }
+    }
     override suspend fun chat(messages: List<LLMMessage>): String {
         return withContext(Dispatchers.IO) {
             val messageDtos = messages.map { msg ->

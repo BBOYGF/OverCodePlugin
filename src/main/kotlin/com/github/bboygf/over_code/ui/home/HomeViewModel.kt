@@ -152,12 +152,14 @@ class HomeViewModel(
             selectedImageBase64List.add(base64)
         }
     }
+
     /**
      * 删除图片
      */
     fun removeImage(base64: String) {
         selectedImageBase64List.remove(base64)
     }
+
     /**
      * 尝试从剪贴板读取图片
      */
@@ -187,11 +189,12 @@ class HomeViewModel(
             content = userInput,
             isUser = true
         )
-        var msgList = listOf<ChatMessage>()
+        var msgList = mutableListOf<ChatMessage>()
         if (loadHistory) {
             messages = messages + userMessage
-            msgList = messages + userMessage
+            msgList = messages.toMutableList()
         } else {
+            messages += userMessage
             msgList += userMessage
         }
         dbService?.saveMessage(userMessage, currentSessionId)

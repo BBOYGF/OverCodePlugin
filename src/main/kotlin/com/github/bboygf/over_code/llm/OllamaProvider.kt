@@ -38,6 +38,7 @@ class OllamaProvider(
     private val logger = thisLogger()
 
     private val client = HttpClient(CIO) {
+
         install(ContentNegotiation) {
             json(Json {
                 ignoreUnknownKeys = true // 忽略响应中多余的字段（重要！）
