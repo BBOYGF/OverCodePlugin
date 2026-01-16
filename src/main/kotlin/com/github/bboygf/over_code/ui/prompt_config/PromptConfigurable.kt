@@ -11,53 +11,16 @@ import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.awt.ComposePanel
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.github.bboygf.over_code.services.ChatDatabaseService
+import com.github.bboygf.over_code.ui.model_config.ModelConfigScreen
 import com.github.bboygf.over_code.vo.PromptInfo
-import com.intellij.openapi.options.Configurable
-import com.intellij.openapi.project.Project
-import java.awt.Dimension
-import javax.swing.JComponent
 
-class PromptConfigurable(private val project: Project) : Configurable {
-
-    private val dbService = ChatDatabaseService.getInstance(project)
-    private var composePanel: ComposePanel? = null
-
-    override fun getDisplayName(): String = "Over Code Prompt 模板"
-
-    override fun createComponent(): JComponent {
-        composePanel = ComposePanel().apply {
-            preferredSize = Dimension(900, 700)
-            setContent {
-                MaterialTheme {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = Color(0xFF1E1F22)
-                    ) {
-                        PromptConfigScreen(dbService)
-                    }
-                }
-            }
-        }
-        return composePanel!!
-    }
-
-    override fun isModified(): Boolean = false
-
-    override fun apply() {}
-
-    override fun reset() {}
-
-    override fun disposeUIResources() {
-        composePanel = null
-    }
-}
 
 @Composable
 fun PromptConfigScreen(dbService: ChatDatabaseService) {
@@ -86,14 +49,18 @@ fun PromptConfigScreen(dbService: ChatDatabaseService) {
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Button(onClick = { viewModel.showAddDialog() }) {
+            Button(
+                onClick = { viewModel.showAddDialog() },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3574F0))
+            ) {
                 Text("添加模板")
             }
 
             Button(
                 onClick = { viewModel.startEditPrompt() },
                 enabled = viewModel.selectedIndex != null &&
-                        !viewModel.prompts.getOrNull(viewModel.selectedIndex ?: -1)?.isBuiltIn!!
+                        !viewModel.prompts.getOrNull(viewModel.selectedIndex ?: -1)?.isBuiltIn!!,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3574F0))
             ) {
                 Text("编辑")
             }
@@ -214,9 +181,10 @@ fun PromptEditDialog(
     var key by remember { mutableStateOf(prompt?.key ?: "") }
     var template by remember { mutableStateOf(prompt?.template ?: "") }
     var description by remember { mutableStateOf(prompt?.description ?: "") }
+
     val dialogShape = RoundedCornerShape(12.dp)
     AlertDialog(
-        modifier = Modifier
+        modifier = Modifier.background(Color(0xFF2B2B2B))
             .border(
                 width = 1.dp,
                 color = Color(0xFF3C3D3E),
@@ -224,12 +192,12 @@ fun PromptEditDialog(
             ),
         shape = dialogShape,
         containerColor = Color(0xFF18191A),
-
         onDismissRequest = onDismiss,
-        title = { Text(if (prompt == null) "添加 Prompt 模板" else "编辑 Prompt 模板") },
+        title = { Text(if (prompt == null) "添加 Prompt 模板" else "编辑 Prompt 模板", color = Color.White) },
         text = {
             Column(
-                modifier = Modifier.width(600.dp).heightIn(max = 500.dp).padding(8.dp),
+                modifier = Modifier.width(600.dp).heightIn(max = 500.dp).padding(8.dp)
+                    .background(Color(0xFF18191A)),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 OutlinedTextField(
@@ -337,13 +305,23 @@ fun PromptEditDialog(
                             )
                         )
                     }
-                }
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF3574F0),
+                    contentColor = Color.White
+                ),
             ) {
                 Text("确定")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFB00020),
+                    contentColor = Color.White
+                ),
+            ) {
                 Text("取消")
             }
         }
