@@ -17,6 +17,7 @@ import androidx.compose.ui.awt.ComposePanel
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.github.bboygf.over_code.services.ChatDatabaseService
+import com.github.bboygf.over_code.ui.OtherSettings.OtherConfigurable
 import com.github.bboygf.over_code.ui.prompt_config.PromptConfigScreen
 import com.github.bboygf.over_code.vo.ModelConfigInfo
 import com.intellij.openapi.options.Configurable
@@ -68,7 +69,7 @@ class ModelConfigurable(private val project: Project) : Configurable {
 @Composable
 fun UnifiedConfigScreen(dbService: ChatDatabaseService) {
     var selectedTabIndex by remember { mutableStateOf(0) }
-    val tabs = listOf("模型配置", "Prompt 模板")
+    val tabs = listOf("模型配置", "Prompt 模板", "其他设置")
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Tab 切换
@@ -89,7 +90,6 @@ fun UnifiedConfigScreen(dbService: ChatDatabaseService) {
                     selected = selectedTabIndex == index,
                     onClick = { selectedTabIndex = index },
                     text = { Text(title) },
-
                     )
             }
         }
@@ -98,6 +98,7 @@ fun UnifiedConfigScreen(dbService: ChatDatabaseService) {
         when (selectedTabIndex) {
             0 -> ModelConfigScreen(dbService)
             1 -> PromptConfigScreen(dbService)
+            2 -> OtherConfigurable(dbService)
         }
     }
 }
@@ -333,9 +334,10 @@ fun ModelConfigDialog(
                 )
 
                 // 提供商选择（使用简单按钮）
-                Column (modifier = Modifier
-                    .background(Color(0xFF18191A))
-                ){
+                Column(
+                    modifier = Modifier
+                        .background(Color(0xFF18191A))
+                ) {
                     Text("提供商:", style = MaterialTheme.typography.bodySmall)
                     Button(
                         onClick = { showProviderMenu = !showProviderMenu },

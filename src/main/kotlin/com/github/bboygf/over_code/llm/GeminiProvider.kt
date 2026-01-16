@@ -25,7 +25,9 @@ class GeminiProvider(
     private val apiKey: String,
     private val model: String = "gemini-2.5-flash",
     private val useProxy: Boolean,
-    private val baseUrl: String
+    private val baseUrl: String,
+    private val host: String,
+    private val  port: String
 ) : LLMProvider {
 
     private val logger = thisLogger()
@@ -57,7 +59,7 @@ class GeminiProvider(
         try {
             // 1. 请求系统(IDE)选择适合该 URI 的代理列表
             // 2. 获取第一个有效代理
-            val proxyUrl = "http://127.0.0.1:10808"
+            val proxyUrl = "http://${host}:${port}"
             logger.info("GeminiProvider: 自动检测到 IDE 代理配置 -> $proxyUrl")
 
             config.proxy = ProxyBuilder.http(proxyUrl)

@@ -25,10 +25,12 @@ class LLMService(private val project: Project) {
      */
     fun getProvider(): LLMProvider? {
         val config = dbService.getActiveModelConfig() ?: return null
+        val host = dbService.getValue("host") ?: "127.0.0.1"
+        val port = dbService.getValue("port") ?: "10808"
 
         // 生成当前配置的“指纹”，用于检测配置是否被用户修改了
         val currentSignature =
-            "${config.name}-${config.provider}-${config.modelName}-${config.apiKey}-${config.baseUrl}-${config.useProxy}"
+            "${config.name}-${config.provider}-${config.modelName}-${config.apiKey}-${config.baseUrl}-${config.useProxy}-${host}-${port}"
 
         // 如果配置没有变且缓存存在，直接返回（性能优化）
         if (cachedProvider != null && cachedConfigSignature == currentSignature) {
@@ -39,7 +41,7 @@ class LLMService(private val project: Project) {
 
         // 创建新的 Provider
         val newProvider = try {
-            createProvider(config)
+            createProvider(config, host, port)
         } catch (e: Exception) {
             logger.error("创建 LLM Provider 失败", e)
             throw LLMException("创建模型服务失败: ${e.message}")
@@ -55,7 +57,7 @@ class LLMService(private val project: Project) {
     /**
      * 工厂方法：根据配置类型实例化具体的 Provider
      */
-    private fun createProvider(config: ModelConfigInfo): LLMProvider {
+    private fun createProvider(config: ModelConfigInfo, host: String, port: String): LLMProvider {
         val providerType = config.provider.lowercase().trim()
 
         // 处理 Base URL，如果用户没填，某些 Provider 可能需要默认值，
@@ -83,6 +85,8 @@ class LLMService(private val project: Project) {
                     apiKey = config.apiKey,
                     model = config.modelName.ifBlank { "gemini-3-flash-preview" },// 默认模型
                     useProxy = config.useProxy,
+                    host = host,
+                    port = port
                 )
             }
 
@@ -98,6 +102,8 @@ class LLMService(private val project: Project) {
                     apiKey = config.apiKey,
                     model = config.modelName,
                     useProxy = config.useProxy,
+                    host = host,
+                    port = port
                 )
             }
 
@@ -109,6 +115,8 @@ class LLMService(private val project: Project) {
                     apiKey = config.apiKey,
                     model = config.modelName,
                     useProxy = config.useProxy,
+                    host = host,
+                    port = port
                 )
             }
         }

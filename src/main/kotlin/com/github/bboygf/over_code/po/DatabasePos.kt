@@ -70,3 +70,8 @@ object PromptTemplates : IntIdTable("prompt_templates") {
     val createdAt = long("created_at")
     val updatedAt = long("updated_at")
 }
+
+object OtherConfigs : IntIdTable("other_configs") {
+    val key = varchar("key", 50).uniqueIndex()
+    val value = varchar("value", 500)
+}

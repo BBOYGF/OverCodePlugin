@@ -11,14 +11,12 @@ import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.github.bboygf.over_code.services.ChatDatabaseService
-import com.github.bboygf.over_code.ui.model_config.ModelConfigScreen
 import com.github.bboygf.over_code.vo.PromptInfo
 
 

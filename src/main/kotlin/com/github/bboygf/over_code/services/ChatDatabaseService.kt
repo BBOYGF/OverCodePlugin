@@ -3,6 +3,7 @@ package com.github.bboygf.over_code.services
 import com.github.bboygf.over_code.po.ChatMessages
 import com.github.bboygf.over_code.po.ChatSessions
 import com.github.bboygf.over_code.po.ModelConfigs
+import com.github.bboygf.over_code.po.OtherConfigs
 import com.github.bboygf.over_code.po.PromptTemplates
 import com.github.bboygf.over_code.vo.ChatMessage
 import com.github.bboygf.over_code.vo.ModelConfigInfo
@@ -14,6 +15,7 @@ import com.intellij.openapi.project.Project
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.kotlin.idea.kdoc.insert
 import java.io.File
 
 
@@ -43,7 +45,10 @@ class ChatDatabaseService(private val project: Project) {
 
         // 初始化数据库表（自动创建表和新增列）
         transaction(database) {
-            SchemaUtils.createMissingTablesAndColumns(ChatMessages, ChatSessions, ModelConfigs, PromptTemplates)
+            SchemaUtils.createMissingTablesAndColumns(
+                ChatMessages, ChatSessions, ModelConfigs, PromptTemplates,
+                OtherConfigs
+            )
             initializeDefaultPrompts()
         }
     }
@@ -528,6 +533,43 @@ class ChatDatabaseService(private val project: Project) {
                 }
         }
     }
+
+    // 1. 获取值 (根据 key 查询 value)
+    fun getValue(targetKey: String): String? {
+        return transaction {
+            // 查询 key 等于 targetKey 的记录
+            OtherConfigs
+                .selectAll().where { OtherConfigs.key eq targetKey }
+                .singleOrNull() // 取第一条，如果没有则返回 null
+                ?.get(OtherConfigs.value) // 从记录中取出 value 列的值
+        }
+    }
+
+    /**
+     * add Key Value
+     */
+    // 2. 添加或更新值 (Upsert)
+    fun addOrUpdateValue(targetKey: String, targetValue: String) {
+        transaction {
+            // 尝试先查询是否存在
+            val existing = OtherConfigs.selectAll().where { OtherConfigs.key eq targetKey }.count()
+
+            if (existing > 0) {
+                // 如果存在，则更新
+                OtherConfigs.update({ OtherConfigs.key eq targetKey }) {
+                    // 注意：这里 it[OtherConfigs.value] 代表列，targetValue 代表参数
+                    it[OtherConfigs.value] = targetValue
+                }
+            } else {
+                // 如果不存在，则插入
+                OtherConfigs.insert {
+                    it[OtherConfigs.key] = targetKey
+                    it[OtherConfigs.value] = targetValue
+                }
+            }
+        }
+    }
+
 
     /**
      * 渲染 Prompt 模板（替换占位符）

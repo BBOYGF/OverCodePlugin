@@ -41,7 +41,9 @@ class OpenAICompatibleProvider(
     private val baseUrl: String,
     private val apiKey: String,
     private val model: String,
-    useProxy: Boolean
+    private val useProxy: Boolean,
+    private val host: String,
+    private val port: String
 ) : LLMProvider {
     /**
      * 日志
@@ -62,6 +64,7 @@ class OpenAICompatibleProvider(
         }
         install(HttpTimeout) { requestTimeoutMillis = 100000 }
     }
+
     /**
      * 使用 Java 标准 ProxySelector 获取代理
      * IntelliJ 平台已覆写了默认的 Selector，因此这会自动应用 IDE 的设置
@@ -69,14 +72,14 @@ class OpenAICompatibleProvider(
     private fun configureProxy(config: CIOEngineConfig) {
         try {
             // 后期改为从配置文件获取
-            val proxyUrl = "http://127.0.0.1:10808"
+            val proxyUrl = "http://${host}:${port}"
             logger.info("GeminiProvider: 自动检测到 IDE 代理配置 -> $proxyUrl")
             config.proxy = ProxyBuilder.http(proxyUrl)
-
         } catch (e: Exception) {
             logger.warn("GeminiProvider: 自动获取代理设置失败，将尝试直连", e)
         }
     }
+
     override suspend fun chat(messages: List<LLMMessage>): String {
         return withContext(Dispatchers.IO) {
             val messageDtos = messages.map { msg ->
@@ -96,7 +99,8 @@ class OpenAICompatibleProvider(
                     }
                     msg.images.forEach { imgData ->
                         // 自动判断是否需要加 base64 前缀 (如果已经是 URL 则不用)
-                        val formattedUrl = if (imgData.startsWith("http")) imgData else "data:image/jpeg;base64,$imgData"
+                        val formattedUrl =
+                            if (imgData.startsWith("http")) imgData else "data:image/jpeg;base64,$imgData"
 
                         contentList.add(
                             Json.encodeToJsonElement(
@@ -159,7 +163,8 @@ class OpenAICompatibleProvider(
                     }
                     msg.images.forEach { imgData ->
                         // 自动判断是否需要加 base64 前缀 (如果已经是 URL 则不用)
-                        val formattedUrl = if (imgData.startsWith("http")) imgData else "data:image/jpeg;base64,$imgData"
+                        val formattedUrl =
+                            if (imgData.startsWith("http")) imgData else "data:image/jpeg;base64,$imgData"
 
                         contentList.add(
                             Json.encodeToJsonElement(
