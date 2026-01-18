@@ -22,6 +22,8 @@ import kotlinx.coroutines.launch
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import com.github.bboygf.over_code.utils.ImageUtils
+import com.github.bboygf.over_code.utils.ProjectFileUtils
+import kotlinx.coroutines.withContext
 
 
 /**
@@ -331,6 +333,22 @@ class HomeViewModel(
         WriteCommandAction.runWriteCommandAction(currentProject) {
             // 一行代码搞定：插入字符串，自动处理光标移动和选区替换
             EditorModificationUtil.insertStringAtCaret(editor, code)
+        }
+    }
+
+    /**
+     * 添加项目索引
+     */
+    fun addProjectIndex() {
+        if (project == null) {
+            return
+        }
+        ioScope.launch {
+            val projectIndexMsg = ProjectFileUtils.exportToMarkdown(project)
+            val currentText = getInputText?.invoke() ?: ""
+            uiScope.launch {
+                onInputTextChange?.invoke(currentText + "\r\n" + projectIndexMsg)
+            }
         }
     }
 }

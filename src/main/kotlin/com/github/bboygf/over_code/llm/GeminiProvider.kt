@@ -78,7 +78,7 @@ class GeminiProvider(
                 // 2. 发起请求 (注意 URL 格式和 API Key)
                 // 格式: POST https://.../models/{model}:generateContent?key={apiKey}
                 val response: GeminiResponse = client.post("$baseUrl/$model:generateContent") {
-                    parameter("key", apiKey)
+                    header("x-goog-api-key", apiKey)
                     contentType(ContentType.Application.Json)
                     setBody(requestBody)
                 }.body()
@@ -99,12 +99,11 @@ class GeminiProvider(
         withContext(Dispatchers.IO) {
             try {
                 val requestBody = buildGeminiRequest(messages)
-
                 // 2. 发起流式请求
                 // 注意：Gemini 默认返回 JSON 数组流，加上 &alt=sse 可以强制返回类似 OpenAI 的 Server-Sent Events 格式
                 // 这样解析逻辑就和 Ollama 那个很像了
                 client.preparePost("$baseUrl/$model:streamGenerateContent") {
-                    parameter("key", apiKey)
+                    header("x-goog-api-key", apiKey)
                     parameter("alt", "sse") // 关键：强制使用 SSE 格式
                     contentType(ContentType.Application.Json)
                     setBody(requestBody)
@@ -113,7 +112,6 @@ class GeminiProvider(
 
                     while (!channel.isClosedForRead) {
                         var line = channel.readUTF8Line() ?: break
-
                         if (line.isBlank()) continue
                         if (line.startsWith("data: ")) {
                             line = line.removePrefix("data: ")
@@ -121,7 +119,6 @@ class GeminiProvider(
                         // Gemini SSE 结束时不一定发 [DONE]，但如果解析失败通常意味着结束或错误
                         try {
                             val responseObj = Json { ignoreUnknownKeys = true }.decodeFromString<GeminiResponse>(line)
-
                             val text = responseObj.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
                             if (!text.isNullOrEmpty()) {
                                 onChunk(text)
@@ -165,7 +162,6 @@ class GeminiProvider(
                     )
                 )
             }
-
             // 3. 映射角色 (Gemini 只有 "user" 和 "model")
             val role = if (msg.role == "assistant") "model" else "user"
             GeminiContent(role = role, parts = parts)

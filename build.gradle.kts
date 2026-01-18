@@ -58,9 +58,6 @@ dependencies {
     implementation(libs.exposed.jdbc)
     implementation(libs.sqlite.jdbc)
 
-    // JSON 处理
-//    implementation("org.json:json:20231013")
-
     implementation("io.ktor:ktor-client-core-jvm:3.0.2") // 接口
     implementation("io.ktor:ktor-client-cio:3.0.2") // 干活的
     implementation("ch.qos.logback:logback-classic:1.4.5") // 日志
@@ -246,5 +243,21 @@ configurations.runtimeClasspath {
 
 configurations.testRuntimeClasspath {
     exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-core")
+    exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-core-jvm")
+    exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-jdk8")
+
+    // 排除所有 Kotlin 标准库及其变体
     exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-jdk7")
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-jdk8")
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-annotation-processing-gradle")
+
+    // 排除 Skiko（如果你确认使用 IDE 自带的渲染器）
+//    exclude(group = "org.jetbrains.skiko", module = "skiko-awt")
+//    exclude(group = "org.jetbrains.skiko", module = "skiko-awt-runtime-windows-x64")
+
+    // 排除通用注解
+    exclude(group = "org.jetbrains", module = "annotations")
+    exclude(group = "androidx.annotation", module = "annotation-jvm")
 }

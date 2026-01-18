@@ -82,7 +82,8 @@ fun BottomInputArea(
     selectedImageBase64List: MutableList<String>,
     onDeleteImage: (String) -> Unit = {},
     onPasteImage: () -> Boolean = { false },
-    onSelectImage: () -> Unit = {}
+    onSelectImage: () -> Unit = {},
+    addProjectIndex: () -> Unit = {},
 ) {
 
     var modeMenuExpanded by remember { mutableStateOf(false) }
@@ -315,8 +316,6 @@ fun BottomInputArea(
                             }
                         }
 
-                        Spacer(modifier = Modifier.width(16.dp))
-
                         // 模型切换
                         Box {
                             Row(
@@ -365,7 +364,7 @@ fun BottomInputArea(
                                 }
                             }
                         }
-                        Spacer(modifier = Modifier.width(16.dp))
+
                         // 是否携带历史消息
                         Box {
                             Row(
@@ -384,6 +383,16 @@ fun BottomInputArea(
                                 )
                             }
 
+                        }
+                        Button(
+                            onClick = {
+                                addProjectIndex()
+                            },
+                            modifier = Modifier.width(130.dp)
+                                .height(40.dp),
+                            shape = RoundedCornerShape(5.dp)
+                        ) {
+                            Text("添加项目索引")
                         }
 
                     }

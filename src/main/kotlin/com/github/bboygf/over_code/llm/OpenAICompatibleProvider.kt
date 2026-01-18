@@ -6,6 +6,7 @@ import com.github.bboygf.over_code.po.OpenAIImageUrl
 import com.github.bboygf.over_code.po.OpenAIMessage
 import com.github.bboygf.over_code.po.OpenAIRequest
 import com.github.bboygf.over_code.po.OpenAIResponse
+import com.github.bboygf.over_code.po.OpenAITool
 import com.intellij.openapi.diagnostic.thisLogger
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -230,6 +231,7 @@ class OpenAICompatibleProvider(
                             // 检查是否结束 (部分模型可能通过 finish_reason 标记)
                             if (responseObj.choices.firstOrNull()?.finish_reason != null) {
                                 // 通常可以忽略，或者在这里 break
+                                onChunk("")
                             }
                         } catch (e: Exception) {
                             logger.error("解析 Ollama 响应失败: ${e.message}\n原始响应: $line", e)
@@ -240,6 +242,68 @@ class OpenAICompatibleProvider(
             } catch (e: Exception) {
                 throw LLMException("流式调用 LLM API 失败: ${e.message}", e)
             }
+        }
+    }
+
+
+    suspend fun chatWithTools(
+        messages: List<LLMMessage>,
+        tools: List<OpenAITool>? = null
+    ): OpenAIResponse {
+        return withContext(Dispatchers.IO) {
+            // ... 前面转换 messages 的逻辑保持一致 ...
+            val messageDtos = messages.map { msg ->
+                if (msg.images.isEmpty()) {
+                    OpenAIMessage(
+                        role = msg.role,
+                        content = JsonPrimitive(msg.content),
+                    )
+                } else {
+                    val contentList = mutableListOf<JsonElement>()
+                    if (msg.content.isNotEmpty()) {
+                        contentList.add(
+                            Json.encodeToJsonElement(
+                                OpenAIContentPart(type = "text", text = msg.content)
+                            )
+                        )
+                    }
+                    msg.images.forEach { imgData ->
+                        // 自动判断是否需要加 base64 前缀 (如果已经是 URL 则不用)
+                        val formattedUrl =
+                            if (imgData.startsWith("http")) imgData else "data:image/jpeg;base64,$imgData"
+
+                        contentList.add(
+                            Json.encodeToJsonElement(
+                                OpenAIContentPart(
+                                    type = "image_url",
+                                    image_url = OpenAIImageUrl(url = formattedUrl)
+                                )
+                            )
+                        )
+
+                    }
+                    OpenAIMessage(
+                        role = msg.role,
+                        content = JsonArray(contentList) // 包装成 JsonArray
+                    )
+                }
+            }
+
+            val requestBody = OpenAIRequest(
+                model = model,
+                messages = messageDtos,
+                stream = false,
+                tools = tools,
+                tool_choice = if (tools != null) "auto" else null
+            )
+
+            val response: OpenAIResponse = client.post("$baseUrl/chat/completions") {
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(requestBody)
+            }.body()
+
+            return@withContext response
         }
     }
 

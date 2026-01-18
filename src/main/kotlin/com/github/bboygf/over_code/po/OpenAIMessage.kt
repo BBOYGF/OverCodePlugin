@@ -9,7 +9,9 @@ import kotlinx.serialization.json.JsonPrimitive
 data class OpenAIMessage(
     val role: String? = null,
     val content: JsonElement? = null,
-    val reasoning_content: String? = null
+    val reasoning_content: String? = null,
+    val tool_calls: List<OpenAIToolCall>? = null, // 模型返回的函数调用
+    val tool_call_id: String? = null             // 角色为 "tool" 时必须提供
 ){
     // 辅助方法：方便获取文本内容 (用于解析响应)
     fun getContentString(): String? {

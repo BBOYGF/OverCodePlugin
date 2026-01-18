@@ -294,19 +294,20 @@ fun OverCodeChatUI(project: Project? = null) {
                 isChecked = viewModel.loadHistory,
                 onLoadHistoryChange = { viewModel.onLoadHistoryChange(it) },
                 selectedImageBase64List = viewModel.selectedImageBase64List,
-                onDeleteImage = {base64 -> viewModel.removeImage(base64) },
+                onDeleteImage = { base64 -> viewModel.removeImage(base64) },
                 onPasteImage = { viewModel.checkClipboardForImage() },
                 onSelectImage = {
                     val descriptor = FileChooserDescriptor(true, false, false, false, false, true)
                         .withTitle("选择图片")
                         .withDescription("支持 png, jpg, jpeg, bmp 格式")
-                        .withExtensionFilter("图片","png", "jpg", "jpeg","bmp")
+                        .withExtensionFilter("图片", "png", "jpg", "jpeg", "bmp")
                     FileChooser.chooseFiles(descriptor, project, null).forEach { file ->
                         val bytes = file.contentsToByteArray()
                         val base64 = Base64.getEncoder().encodeToString(bytes)
                         viewModel.addImage(base64)
                     }
-                }
+                },
+                addProjectIndex = { viewModel.addProjectIndex() }
             )
 
         }
