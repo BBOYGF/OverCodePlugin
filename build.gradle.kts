@@ -58,11 +58,11 @@ dependencies {
     implementation(libs.exposed.jdbc)
     implementation(libs.sqlite.jdbc)
 
-    implementation("io.ktor:ktor-client-core-jvm:3.0.2") // 接口
-    implementation("io.ktor:ktor-client-cio:3.0.2") // 干活的
+    implementation("io.ktor:ktor-client-core-jvm:3.3.3") // 接口
+    implementation("io.ktor:ktor-client-cio:3.3.3") // 干活的
     implementation("ch.qos.logback:logback-classic:1.4.5") // 日志
-    implementation("io.ktor:ktor-client-content-negotiation:3.0.2") //接口
-    implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.2") //  接口
+    implementation("io.ktor:ktor-client-content-negotiation:3.3.3") //接口
+    implementation("io.ktor:ktor-serialization-kotlinx-json:3.3.3") //  接口
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3") // 干活的
 
