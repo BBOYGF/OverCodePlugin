@@ -211,7 +211,6 @@ fun BottomInputArea(
                                 }
                             }
 
-                            println("key:${it.key} type:${it.type} isShiftPressed:${it.isShiftPressed}")
                             if (it.key == Key.Enter && it.type == KeyEventType.KeyUp) {
                                 if (it.isShiftPressed) {
                                     val currentText = inputText.text
@@ -239,7 +238,7 @@ fun BottomInputArea(
                         .onFocusChanged {
                             if (it.isFocused && !focused) { // 只有在从没焦点变为有焦点时触发
                                 scope.launch {
-                                    delay(100) // 很短的延迟，用户无感知
+                                    delay(500) // 很短的延迟，用户无感知
                                     onInputChange(inputText.copy(selection = TextRange(inputText.text.length)))
                                 }
                             }
