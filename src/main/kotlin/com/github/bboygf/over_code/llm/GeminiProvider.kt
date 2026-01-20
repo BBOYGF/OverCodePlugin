@@ -1,6 +1,11 @@
 package com.github.bboygf.over_code.llm
 
 import com.github.bboygf.over_code.po.*
+import com.github.bboygf.over_code.po.GeminiBlob
+import com.github.bboygf.over_code.po.GeminiContent
+import com.github.bboygf.over_code.po.GeminiPart
+import com.github.bboygf.over_code.po.GeminiRequest
+import com.github.bboygf.over_code.po.GeminiResponse
 import com.intellij.openapi.diagnostic.thisLogger
 import io.ktor.client.*
 import io.ktor.client.call.*
@@ -16,6 +21,9 @@ import io.ktor.utils.io.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /**
  * Google Gemini LLM Provider
@@ -27,7 +35,7 @@ class GeminiProvider(
     private val useProxy: Boolean,
     private val baseUrl: String,
     private val host: String,
-    private val  port: String
+    private val port: String
 ) : LLMProvider {
 
     private val logger = thisLogger()
@@ -95,10 +103,16 @@ class GeminiProvider(
         }
     }
 
-    override suspend fun chatStream(messages: List<LLMMessage>, onChunk: (String) -> Unit) {
+    override suspend fun chatStream(
+        messages: List<LLMMessage>,
+        onChunk: (String) -> Unit,
+        onToolCall: ((GeminiPart) -> Unit)?,
+        tools: List<GeminiTool>?
+    ) {
         withContext(Dispatchers.IO) {
+            var line = ""
             try {
-                val requestBody = buildGeminiRequest(messages)
+                val requestBody = buildGeminiRequest(messages, tools)
                 // 2. 发起流式请求
                 // 注意：Gemini 默认返回 JSON 数组流，加上 &alt=sse 可以强制返回类似 OpenAI 的 Server-Sent Events 格式
                 // 这样解析逻辑就和 Ollama 那个很像了
@@ -110,25 +124,40 @@ class GeminiProvider(
                 }.execute { response ->
                     val channel: ByteReadChannel = response.bodyAsChannel()
 
+                    // 在 chatStream 的 execute 块中
                     while (!channel.isClosedForRead) {
-                        var line = channel.readUTF8Line() ?: break
-                        if (line.isBlank()) continue
-                        if (line.startsWith("data: ")) {
-                            line = line.removePrefix("data: ")
+                        line = channel.readUTF8Line() ?: break
+                        println("line: $line")
+                        // ... 解析 JSON ...
+                        if (line.isEmpty()) continue // 忽略空行
+
+                        if (line.startsWith("data:")) {
+                            // 使用 substringAfter 确保无论是否有空格都能正确提取内容
+                            line = line.substringAfter("data:").trim()
+                        } else {
+                            // 如果不是以 data: 开头的行（可能是注释或心跳），直接跳过
+                            continue
                         }
-                        // Gemini SSE 结束时不一定发 [DONE]，但如果解析失败通常意味着结束或错误
-                        try {
-                            val responseObj = Json { ignoreUnknownKeys = true }.decodeFromString<GeminiResponse>(line)
-                            val text = responseObj.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-                            if (!text.isNullOrEmpty()) {
-                                onChunk(text)
+                        if (line == "[DONE]") break
+
+                        val responseObj = Json { ignoreUnknownKeys = true }.decodeFromString<GeminiResponse>(line)
+
+                        // 关键：遍历所有的 Part，而不是只取第一个
+                        responseObj.candidates?.forEach { candidate ->
+                            candidate.content?.parts?.forEach { part ->
+                                // 1. 处理文本片段
+                                part.text?.let { onChunk(it) }
+
+                                // 2. 处理函数调用（可能有多个）
+                                part.functionCall?.let { call ->
+                                    onToolCall?.invoke(part) // 这里会被触发多次
+                                }
                             }
-                        } catch (e: Exception) {
-                            // 忽略非 JSON 行
                         }
                     }
                 }
             } catch (e: Exception) {
+                println("调用模型产生异常：${e.message} line:$line")
                 if (e is CancellationException) throw e
                 throw LLMException("流式调用 Gemini API 失败: ${e.message}", e)
             }
@@ -138,35 +167,73 @@ class GeminiProvider(
     /**
      * 辅助方法：将通用 LLMMessage 转换为 Gemini 格式
      */
-    private fun buildGeminiRequest(messages: List<LLMMessage>): GeminiRequest {
+    private fun buildGeminiRequest(
+        messages: List<LLMMessage>,
+        tools: List<GeminiTool>? = null,
+        toolConfig: GeminiToolConfig? = null
+    ): GeminiRequest {
         val geminiContents = messages.map { msg ->
             val parts = mutableListOf<GeminiPart>()
+            when (msg.role) {
+                // 情况 1: 用户发送的消息
+                "user" -> {
+                    if (msg.content.isNotEmpty()) {
+                        parts.add(GeminiPart(text = msg.content))
+                    }
+                    // 图片处理...
+                    msg.images.forEach { imgData ->
+                        val (mimeType, rawBase64) = parseBase64Image(imgData)
+                        parts.add(GeminiPart(inlineData = GeminiBlob(mimeType, rawBase64)))
+                    }
+                    GeminiContent(role = "user", parts = parts)
+                }
 
-            // 1. 处理文本
-            if (msg.content.isNotEmpty()) {
-                parts.add(GeminiPart(text = msg.content))
-            }
+                // 情况 2: 模型之前的回复（可能是文本，也可能是它发起的函数调用）
+                "assistant" -> {
+                    // 如果模型之前说过话
+                    if (msg.content.isNotEmpty()) {
+                        parts.add(GeminiPart(text = msg.content))
+                    }
+                    // 重点：如果模型之前发起了函数调用，必须放进历史里！
+                    if (msg.functionCall != null) {
+                        parts.add(GeminiPart(functionCall = msg.functionCall, thoughtSignature = msg.thoughtSignature))
+                    }
+                    GeminiContent(role = "model", parts = parts)
+                }
 
-            // 2. 处理图片
-            msg.images.forEach { imgData ->
-                // Gemini 需要原始 base64，不带 "data:image/..." 前缀
-                // 且必须指定 mimeType (这里简单假设为 jpeg，实际最好根据 header 判断)
-                val (mimeType, rawBase64) = parseBase64Image(imgData)
+                // 情况 3: 工具执行的结果（我们要发给模型的）
+                // 对应前面说的 Msg 3
+                "function", "tool" -> {
+                    val funcName = msg.name ?: "unknown"
+                    // 将内容转为 JSON 对象，Gemini 要求 response 是 JSON
+                    val jsonResponse = try {
+                        Json.parseToJsonElement(msg.content) as JsonObject
+                    } catch (e: Exception) {
+                        // 如果内容是纯文本（比如文件列表字符串），包装成 JSON
+                        buildJsonObject { put("result", msg.content) }
+                    }
 
-                parts.add(
-                    GeminiPart(
-                        inlineData = GeminiBlob(
-                            mimeType = mimeType,
-                            data = rawBase64
+                    parts.add(
+                        GeminiPart(
+                            functionResponse = GeminiFunctionResponse(
+                                name = funcName,
+                                response = jsonResponse
+                            )
                         )
                     )
-                )
+                    // Gemini API 要求 function response 的 role 必须是 "function"
+                    GeminiContent(role = "function", parts = parts)
+                }
+
+                else -> GeminiContent(role = "user", parts = parts) // 默认回退
             }
-            // 3. 映射角色 (Gemini 只有 "user" 和 "model")
-            val role = if (msg.role == "assistant") "model" else "user"
-            GeminiContent(role = role, parts = parts)
         }
-        return GeminiRequest(contents = geminiContents)
+
+        return GeminiRequest(
+            contents = geminiContents,
+            tools = tools, // 只有第一条消息需要带 tools，或者每次带都行
+            toolConfig = toolConfig
+        )
     }
 
     /**

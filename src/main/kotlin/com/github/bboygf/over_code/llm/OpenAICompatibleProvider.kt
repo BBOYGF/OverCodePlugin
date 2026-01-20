@@ -1,5 +1,8 @@
 package com.github.bboygf.over_code.llm
 
+import com.github.bboygf.over_code.po.GeminiFunctionCall
+import com.github.bboygf.over_code.po.GeminiPart
+import com.github.bboygf.over_code.po.GeminiTool
 import com.github.bboygf.over_code.po.LLMMessage
 import com.github.bboygf.over_code.po.OpenAIContentPart
 import com.github.bboygf.over_code.po.OpenAIImageUrl
@@ -145,7 +148,10 @@ class OpenAICompatibleProvider(
     /**
      * 流式聊天 - 逐字输出
      */
-    override suspend fun chatStream(messages: List<LLMMessage>, onChunk: (String) -> Unit) {
+    override suspend fun chatStream(
+        messages: List<LLMMessage>, onChunk: (String) -> Unit, onToolCall: ((GeminiPart) -> Unit)?,
+        tools: List<GeminiTool>?
+    ) {
         withContext(Dispatchers.IO) {
             val messageDtos = messages.map { msg ->
                 if (msg.images.isEmpty()) {

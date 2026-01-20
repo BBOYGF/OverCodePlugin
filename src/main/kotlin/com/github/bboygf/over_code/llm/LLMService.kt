@@ -1,5 +1,8 @@
 package com.github.bboygf.over_code.llm
 
+import com.github.bboygf.over_code.po.GeminiFunctionCall
+import com.github.bboygf.over_code.po.GeminiPart
+import com.github.bboygf.over_code.po.GeminiTool
 import com.github.bboygf.over_code.po.LLMMessage
 import com.github.bboygf.over_code.services.ChatDatabaseService
 import com.github.bboygf.over_code.vo.ModelConfigInfo
@@ -137,11 +140,16 @@ class LLMService(private val project: Project) {
     /**
      * 流式发送消息，逐块输出
      */
-    suspend fun chatStream(messages: List<LLMMessage>, onChunk: (String) -> Unit) {
+    suspend fun chatStream(
+        messages: List<LLMMessage>,
+        onChunk: (String) -> Unit,
+        onToolCall: ((GeminiPart) -> Unit)?,
+        tools: List<GeminiTool>?
+    ) {
         val provider = getProvider()
             ?: throw LLMException("未配置模型，请先在设置中配置并激活一个模型")
 
-        provider.chatStream(messages, onChunk)
+        provider.chatStream(messages, onChunk, onToolCall,tools)
     }
 
     companion object {

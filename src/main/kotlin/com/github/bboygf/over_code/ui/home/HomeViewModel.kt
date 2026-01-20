@@ -5,6 +5,9 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.github.bboygf.over_code.llm.LLMService
+import com.github.bboygf.over_code.po.GeminiFunctionDeclaration
+import com.github.bboygf.over_code.po.GeminiPart
+import com.github.bboygf.over_code.po.GeminiTool
 import com.github.bboygf.over_code.po.LLMMessage
 import com.github.bboygf.over_code.services.ChatDatabaseService
 import com.github.bboygf.over_code.vo.ChatMessage
@@ -23,7 +26,8 @@ import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import com.github.bboygf.over_code.utils.ImageUtils
 import com.github.bboygf.over_code.utils.ProjectFileUtils
-import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 
 /**
@@ -176,106 +180,90 @@ class HomeViewModel(
 
 
     fun sendMessage(userInput: String, onScrollToBottom: () -> Unit) {
-        if (userInput.isBlank() && selectedImageBase64List == null || isLoading) return
+        if (userInput.isBlank() && selectedImageBase64List.isEmpty() || isLoading) return
 
         isLoading = true
         val currentImageList = selectedImageBase64List.toList()
         selectedImageBase64List.clear()
 
-
-        isLoading = true
-
-        // 添加用户消息
+        // 1. 处理用户消息
         val userMessage = ChatMessage(
             id = System.currentTimeMillis().toString(),
             content = userInput,
             isUser = true
         )
-        var msgList = mutableListOf<ChatMessage>()
-        if (loadHistory) {
-            messages = messages + userMessage
-            msgList = messages.toMutableList()
-        } else {
-            messages += userMessage
-            msgList += userMessage
-        }
+        // 优化：简化 List 更新逻辑
+        messages = messages + userMessage
         dbService?.saveMessage(userMessage, currentSessionId)
 
-        // 构建历史消息
-        // 构建历史消息
-        val llmMessages = msgList.mapIndexed { index, msg ->
+        // 2. 构建 LLM 历史 (注意：此时 UI 上的 messages 已经包含了 userMessage)
+        val llmHistory = messages.mapIndexed { index, msg ->
             LLMMessage(
                 role = if (msg.isUser) "user" else "assistant",
                 content = msg.content,
-                images = if (msg.isUser && index == msgList.size - 1) currentImageList else emptyList()
+                // 只给最后一条用户消息附带图片
+                images = if (msg.isUser && index == messages.size - 1) currentImageList else emptyList()
             )
-        }
+        }.toMutableList()
 
-
-        // 创建AI消息占位符
+        // 3. 创建 AI 消息占位符
         val aiMessageId = (System.currentTimeMillis() + 1).toString()
         val aiMessage = ChatMessage(
             id = aiMessageId,
-            content = "",
+            content = "...",
             isUser = false
         )
         messages = messages + aiMessage
 
-        // 调用流式API
-        ioScope.launch {
-            try {
-                var fullContent = ""
-                llmService?.chatStream(llmMessages) { chunk ->
-
-                    fullContent += chunk
-
-                    // 更新消息内容
-                    uiScope.launch {
-                        messages = messages.map { msg ->
-                            if (msg.id == aiMessageId) {
-                                msg.copy(content = fullContent)
-                            } else {
-                                msg
-                            }
+        // 工具定义 (保持不变)
+        val tools = listOf(
+            GeminiTool(
+                functionDeclarations = listOf(
+                    GeminiFunctionDeclaration(
+                        name = "get_project_info",
+                        description = "读取当前项目的完整文件结构和内容。",
+                        parameters = buildJsonObject {
+                            put("type", "object")
+                            put("properties", buildJsonObject {})
                         }
-                        // 触发滚动到底部
-                        onScrollToBottom()
-                    }
-                } ?: run {
-                    uiScope.launch {
-                        fullContent = "未配置模型，请先在设置中配置并激活一个模型"
-                        messages = messages.map { msg ->
-                            if (msg.id == aiMessageId) {
-                                msg.copy(content = fullContent)
-                            } else {
-                                msg
-                            }
-                        }
-                    }
-                }
-
-                // 保存完整消息
-                dbService?.saveMessage(
-                    ChatMessage(
-                        id = aiMessageId,
-                        content = fullContent,
-                        isUser = false
-                    ),
-                    currentSessionId
+                    )
                 )
+            )
+        )
 
-                isLoading = false
+        ioScope.launch {
+            // 用于累计最终显示的文本
+            val contentBuilder = StringBuilder()
+            var errorOccurred = false
+
+            try {
+                processChatTurn(
+                    history = llmHistory,
+                    tools = tools,
+                    aiMessageId = aiMessageId,
+                    contentBuilder = contentBuilder,
+                    onScrollToBottom = onScrollToBottom
+                )
             } catch (e: Exception) {
                 e.printStackTrace()
+                errorOccurred = true
+                contentBuilder.append("\n[系统错误: ${e.message}]")
+                updateUiMessage(aiMessageId, contentBuilder.toString())
+            } finally {
+                // 4. 【关键修复】无论成功还是失败，只要有内容生成，就保存到数据库
+                val finalContent = contentBuilder.toString()
+                if (finalContent.isNotBlank() && finalContent != "...") {
+                    dbService?.saveMessage(
+                        ChatMessage(
+                            id = aiMessageId,
+                            content = finalContent,
+                            isUser = false
+                        ),
+                        currentSessionId
+                    )
 
-                // 更新错误消息
-                val errorContent = "错误: ${e.message ?: "未知错误"}"
-                messages = messages.map { msg ->
-                    if (msg.id == aiMessageId) {
-                        msg.copy(content = errorContent)
-                    } else {
-                        msg
-                    }
+                    // 额外保险：确保 UI 状态最终一致
+                    updateUiMessage(aiMessageId, finalContent)
                 }
 
                 isLoading = false
@@ -314,6 +302,99 @@ class HomeViewModel(
             "$currentText\n\n$text"
         }
         onInputTextChange?.invoke(newText)
+    }
+    /**
+     * 核心递归函数：处理 对话 -> 工具调用 -> 再次对话 的循环
+     */
+     private suspend fun processChatTurn(
+        history: MutableList<LLMMessage>,
+        tools: List<GeminiTool>,
+        aiMessageId: String,
+        contentBuilder: StringBuilder, // 用于 UI 显示（累积所有文本）
+        onScrollToBottom: () -> Unit
+    ) {
+        var part: GeminiPart? = null
+        // 关键修复：新增一个 StringBuilder 仅记录"当前这一轮"的文本，用于存入 history
+        val currentTurnText = StringBuilder()
+
+        val service = llmService ?: run {
+            updateUiMessage(aiMessageId, "未配置模型")
+            return
+        }
+
+        // 调用流式 API
+        service.chatStream(
+            messages = history,
+            tools = tools,
+            onChunk = { chunk ->
+                // 1. 同时追加到总显示文本 和 当前轮次历史文本
+                contentBuilder.append(chunk)
+                currentTurnText.append(chunk)
+
+                // 2. 实时更新 UI
+                updateUiMessage(aiMessageId, contentBuilder.toString())
+                uiScope.launch { onScrollToBottom() }
+            },
+            onToolCall = { call ->
+                part = call
+            },
+        )
+
+        // API 这一轮结束
+        if (part != null) {
+            val call = part!!
+
+            // UI 提示（可选，不写入 contentBuilder 以免污染最终结果，或者你可以选择写入）
+            // updateUiMessage(aiMessageId, "${contentBuilder}\n\n(正在执行操作: ${call.name}...)")
+
+            // 3. 【关键修复】将这一轮 AI 的思考文本(currentTurnText)和工具调用意图一起加入历史
+            history.add(LLMMessage(
+                role = "assistant",
+                content = currentTurnText.toString(), // 修复：带上刚才生成的思考文本
+                functionCall = call.functionCall,
+                thoughtSignature=call.thoughtSignature
+            ))
+
+            // 4. 执行本地代码
+            val toolResultContent = if (call.functionCall!!.name == "get_project_info") {
+                try {
+                     ProjectFileUtils.exportToMarkdown(project!!)
+                } catch (e: Exception) {
+                    "读取项目失败: ${e.message}"
+                }
+            } else {
+                "Unknown function: ${call.functionCall.name}"
+            }
+
+            // 5. 将“执行结果”加入历史
+            history.add(LLMMessage(
+                role = "function",
+                name = call.functionCall.name,
+                content = toolResultContent
+            ))
+            updateUiMessage(aiMessageId, toolResultContent);
+            // 6. 【递归】
+            processChatTurn(
+                history = history,
+                tools = tools,
+                aiMessageId = aiMessageId,
+                contentBuilder = contentBuilder,
+                onScrollToBottom = onScrollToBottom
+            )
+        }
+    }
+
+    // 辅助方法：在 UI 线程更新消息
+    private fun updateUiMessage(id: String, newContent: String) {
+        uiScope.launch {
+            messages = messages.map { msg ->
+                if (msg.id == id) {
+                    msg.copy(content = newContent)
+                } else {
+                    msg
+                }
+            }
+        }
     }
 
     /**

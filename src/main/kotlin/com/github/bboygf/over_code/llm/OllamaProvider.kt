@@ -1,5 +1,8 @@
 package com.github.bboygf.over_code.llm
 
+import com.github.bboygf.over_code.po.GeminiFunctionCall
+import com.github.bboygf.over_code.po.GeminiPart
+import com.github.bboygf.over_code.po.GeminiTool
 import com.github.bboygf.over_code.po.LLMMessage
 import com.github.bboygf.over_code.po.OpenAIContentPart
 import com.github.bboygf.over_code.po.OpenAIImageUrl
@@ -46,7 +49,7 @@ class OllamaProvider(
                 isLenient = true
             })
         }
-         install(HttpTimeout) { requestTimeoutMillis = 60000 }
+        install(HttpTimeout) { requestTimeoutMillis = 60000 }
     }
 
     override suspend fun chat(messages: List<LLMMessage>): String {
@@ -70,7 +73,8 @@ class OllamaProvider(
                         }
                         msg.images.forEach { imgData ->
                             // 自动判断是否需要加 base64 前缀 (如果已经是 URL 则不用)
-                            val formattedUrl = if (imgData.startsWith("http")) imgData else "data:image/jpeg;base64,$imgData"
+                            val formattedUrl =
+                                if (imgData.startsWith("http")) imgData else "data:image/jpeg;base64,$imgData"
 
                             contentList.add(
                                 Json.encodeToJsonElement(
@@ -117,7 +121,10 @@ class OllamaProvider(
     /**
      * 流式聊天 - 逐字输出
      */
-    override suspend fun chatStream(messages: List<LLMMessage>, onChunk: (String) -> Unit) {
+    override suspend fun chatStream(
+        messages: List<LLMMessage>, onChunk: (String) -> Unit, onToolCall: ((GeminiPart) -> Unit)?,
+        tools: List<GeminiTool>?
+    ) {
         withContext(Dispatchers.IO) {
             try {
                 // 1. 准备请求数据 (复用之前定义的 DTO)
@@ -138,7 +145,8 @@ class OllamaProvider(
                         }
                         msg.images.forEach { imgData ->
                             // 自动判断是否需要加 base64 前缀 (如果已经是 URL 则不用)
-                            val formattedUrl = if (imgData.startsWith("http")) imgData else "data:image/jpeg;base64,$imgData"
+                            val formattedUrl =
+                                if (imgData.startsWith("http")) imgData else "data:image/jpeg;base64,$imgData"
 
                             contentList.add(
                                 Json.encodeToJsonElement(
@@ -211,7 +219,7 @@ class OllamaProvider(
                                 // 通常可以忽略，或者在这里 break
                             }
                         } catch (e: Exception) {
-                           logger.error("解析 Ollama 响应失败: ${e.message}\n原始响应: $line", e)
+                            logger.error("解析 Ollama 响应失败: ${e.message}\n原始响应: $line", e)
                         }
                     }
                 }
