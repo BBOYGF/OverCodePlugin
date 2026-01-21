@@ -123,8 +123,12 @@ fun OverCodeChatUI(project: Project? = null) {
     // 加载历史消息
     LaunchedEffect(viewModel.currentSessionId) {
         viewModel.loadMessages(viewModel.currentSessionId)
-        if (viewModel.messages.isNotEmpty()) {
-            listState.animateScrollToItem(viewModel.messages.size - 1)
+        if (viewModel.chatMessages.isNotEmpty()) {
+            try {
+                listState.animateScrollToItem(viewModel.chatMessages.size - 1)
+            } catch (e: Exception) {
+                println("滚动到最后异常" + e.message)
+            }
         }
     }
     LaunchedEffect(viewModel.scrollEvents) {
@@ -233,7 +237,7 @@ fun OverCodeChatUI(project: Project? = null) {
                         primaryColor = primaryColor
                     )
                 } else {
-                    if (viewModel.messages.isEmpty()) {
+                    if (viewModel.chatMessages.isEmpty()) {
                         // 空状态 - 显示欢迎界面
                         WelcomeScreen()
                     } else {
@@ -245,7 +249,7 @@ fun OverCodeChatUI(project: Project? = null) {
                             verticalArrangement = Arrangement.spacedBy(5.dp),
                             userScrollEnabled = true
                         ) {
-                            items(viewModel.messages) { message ->
+                            items(viewModel.chatMessages) { message ->
                                 MessageBubble(
                                     message = message,
                                     onCopyCode = { viewModel.copyToClipboard(it) },
@@ -277,8 +281,12 @@ fun OverCodeChatUI(project: Project? = null) {
                         viewModel.sendMessage(userInput.text) {
                             // 自动滚动到底部
                             coroutineScope.launch {
-                                if (viewModel.messages.isNotEmpty()) {
-                                    listState.animateScrollToItem(viewModel.messages.size - 1)
+                                if (viewModel.chatMessages.isNotEmpty()) {
+                                    try {
+                                        listState.animateScrollToItem(viewModel.chatMessages.size - 1)
+                                    } catch (e: Exception) {
+                                        println("获取最后一行数据异常！" + e.message)
+                                    }
                                 }
                             }
                         }

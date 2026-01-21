@@ -1,5 +1,6 @@
 package com.github.bboygf.over_code.po
 
+import com.github.bboygf.over_code.enums.ChatRole
 import org.jetbrains.exposed.dao.IntEntity
 import org.jetbrains.exposed.dao.IntEntityClass
 import org.jetbrains.exposed.dao.id.EntityID
@@ -11,7 +12,7 @@ import org.jetbrains.exposed.dao.id.IntIdTable
 object ChatMessages : IntIdTable("chat_messages") {
     val messageId = varchar("message_id", 50).uniqueIndex()
     val content = text("content")
-    val isUser = bool("is_user")
+    val chatRole = enumerationByName("chat_role", 20, ChatRole::class)
     val timestamp = long("timestamp")
     val sessionId = varchar("session_id", 50).default("default")
 }

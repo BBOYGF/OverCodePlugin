@@ -1,5 +1,6 @@
 package com.github.bboygf.over_code.services
 
+import com.github.bboygf.over_code.enums.ChatRole
 import com.github.bboygf.over_code.po.ChatMessages
 import com.github.bboygf.over_code.po.ChatSessions
 import com.github.bboygf.over_code.po.ModelConfigs
@@ -10,12 +11,10 @@ import com.github.bboygf.over_code.vo.ModelConfigInfo
 import com.github.bboygf.over_code.vo.PromptInfo
 import com.github.bboygf.over_code.vo.SessionInfo
 import com.intellij.openapi.components.Service
-import com.intellij.openapi.project.BaseProjectDirectories.Companion.getBaseDirectories
 import com.intellij.openapi.project.Project
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.transaction
-import org.jetbrains.kotlin.idea.kdoc.insert
 import java.io.File
 
 
@@ -61,7 +60,7 @@ class ChatDatabaseService(private val project: Project) {
             ChatMessages.insert {
                 it[messageId] = message.id
                 it[content] = message.content
-                it[isUser] = message.isUser
+                it[chatRole] = message.chatRole
                 it[timestamp] = message.timestamp
                 it[ChatMessages.sessionId] = sessionId
             }
@@ -80,7 +79,7 @@ class ChatDatabaseService(private val project: Project) {
                 ChatMessages.insert {
                     it[messageId] = message.id
                     it[content] = message.content
-                    it[isUser] = message.isUser
+                    it[chatRole] = message.chatRole
                     it[timestamp] = message.timestamp
                     it[ChatMessages.sessionId] = sessionId
                 }
@@ -101,7 +100,7 @@ class ChatDatabaseService(private val project: Project) {
                     ChatMessage(
                         id = row[ChatMessages.messageId],
                         content = row[ChatMessages.content],
-                        isUser = row[ChatMessages.isUser],
+                        chatRole = row[ChatMessages.chatRole],
                         timestamp = row[ChatMessages.timestamp]
                     )
                 }

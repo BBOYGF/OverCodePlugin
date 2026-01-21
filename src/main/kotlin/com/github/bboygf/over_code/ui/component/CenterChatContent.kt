@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Person
@@ -25,18 +24,20 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.github.bboygf.over_code.enums.ChatRole
 import com.github.bboygf.over_code.vo.ChatMessage
 import com.github.bboygf.over_code.vo.MessagePart
 
@@ -149,7 +150,7 @@ fun MessageBubble(
     Card(
         modifier = Modifier.fillMaxWidth().padding(4.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (message.isUser) Color(0xFF3C3F41) else Color(0xFF3C3F41)
+            containerColor = if (message.chatRole == ChatRole.用户) Color(0xFF3C3F41) else Color(0xFF3C3F41)
         ),
         shape = RoundedCornerShape(8.dp)
     ) {
@@ -165,7 +166,7 @@ fun MessageBubble(
                     ),
                 contentAlignment = Alignment.CenterStart
             ) {
-                if (message.isUser) {
+                if (message.chatRole== ChatRole.用户) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.Person,
@@ -187,18 +188,51 @@ fun MessageBubble(
             }
 
             // 内容区域
-            val parts = remember(message.content) { parseMessage(message.content) }
+            val parts = remember(message.content) { parseMarkdown(message.content) }
 
-            Column(modifier = Modifier.padding(8.dp)) {
+            Column(modifier = Modifier.padding(12.dp)) {
                 parts.forEach { part ->
                     when (part) {
+                        is MessagePart.Header -> {
+                            SelectionContainer {
+                                Text(
+                                    text = part.content,
+                                    style = TextStyle(
+                                        fontSize = when (part.level) {
+                                            1 -> 24.sp
+                                            2 -> 20.sp
+                                            else -> 18.sp
+                                        },
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF4A9D5F) // 标题用绿色凸显
+                                    ),
+                                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+                                )
+                            }
+                        }
+
+                        is MessagePart.ListItem -> {
+                            Row(modifier = Modifier.padding(4.dp)) {
+                                SelectionContainer {
+                                    Text(
+                                        text = if (part.index != null) "${part.index}. " else "• ",
+                                        color = Color(0xFF4A9D5F),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                SelectionContainer {
+                                    Text(text = part.content, color = Color.White, lineHeight = 20.sp)
+                                }
+                            }
+                        }
+
                         is MessagePart.Text -> {
                             SelectionContainer {
                                 Text(
                                     text = part.content,
-                                    fontSize = 13.sp,
                                     color = Color.White,
-                                    lineHeight = 20.sp,
+                                    lineHeight = 22.sp,
+                                    modifier = Modifier.padding(vertical = 4.dp)
                                 )
                             }
                         }
@@ -207,8 +241,8 @@ fun MessageBubble(
                             CodeBlock(
                                 code = part.content,
                                 language = part.language,
-                                onCopy = { onCopyCode(part.content) },
-                                onInsert = { onInsertCode(part.content) }
+                                onCopy = { /* ... */ },
+                                onInsert = { /* ... */ }
                             )
                         }
                     }
@@ -288,6 +322,116 @@ fun CodeBlock(
                 fontSize = 12.sp,
                 lineHeight = 18.sp
             )
+        }
+    }
+}
+
+
+/**
+ * 解析 Markdown 代码块
+ */
+fun parseMarkdown(text: String): List<MessagePart> {
+    val parts = mutableListOf<MessagePart>()
+    val lines = text.lines()
+    var index = 0
+
+    while (index < lines.size) {
+        val line = lines[index]
+
+        // 1. 处理代码块 (Code Block)
+        if (line.trim().startsWith("```")) {
+            val language = line.trim().removePrefix("```").trim()
+            val codeContent = StringBuilder()
+            index++
+            while (index < lines.size && !lines[index].trim().startsWith("```")) {
+                codeContent.append(lines[index]).append("\n")
+                index++
+            }
+            parts.add(MessagePart.Code(codeContent.toString().trimEnd(), language))
+            index++ // 跳过结束的 ```
+            continue
+        }
+
+        // 2. 处理标题 (Headers: #, ##, ###)
+        val headerMatch = Regex("^(#{1,6})\\s+(.*)$").find(line)
+        if (headerMatch != null) {
+            val level = headerMatch.groupValues[1].length
+            val content = headerMatch.groupValues[2]
+            parts.add(MessagePart.Header(content, level))
+            index++
+            continue
+        }
+
+        // 3. 处理有序列表 (Ordered List: 1. Item)
+        val orderedListMatch = Regex("^(\\d+)\\.\\s+(.*)$").find(line)
+        if (orderedListMatch != null) {
+            val num = orderedListMatch.groupValues[1].toInt()
+            val content = orderedListMatch.groupValues[2]
+            parts.add(MessagePart.ListItem(parseInlineStyles(content), num))
+            index++
+            continue
+        }
+
+        // 4. 处理无序列表 (Unordered List: *, -, •)
+        val unorderedListMatch = Regex("^[\\*\\-\\•]\\s+(.*)$").find(line)
+        if (unorderedListMatch != null) {
+            val content = unorderedListMatch.groupValues[1]
+            parts.add(MessagePart.ListItem(parseInlineStyles(content), null))
+            index++
+            continue
+        }
+
+        // 5. 普通文本块
+        if (line.isNotBlank()) {
+            parts.add(MessagePart.Text(parseInlineStyles(line)))
+        }
+        index++
+    }
+    return parts
+}
+
+/**
+ * 处理行内样式：加粗 **text** 和 行内代码 `code`
+ */
+fun parseInlineStyles(text: String): AnnotatedString {
+    return buildAnnotatedString {
+        val boldRegex = Regex("\\*\\*(.*?)\\*\\*")
+        val inlineCodeRegex = Regex("`(.*?)`")
+
+        var currentIndex = 0
+
+        // 合并所有标记并按索引排序
+        val tokens = (boldRegex.findAll(text) + inlineCodeRegex.findAll(text))
+            .sortedBy { it.range.first }
+            .toList()
+
+        for (token in tokens) {
+            // 添加匹配项之前的普通文本
+            append(text.substring(currentIndex, token.range.first))
+
+            val isBold = token.value.startsWith("**")
+            val content = if (isBold) token.groupValues[1] else token.groupValues[1]
+
+            val start = length
+            append(content)
+            val end = length
+
+            if (isBold) {
+                addStyle(SpanStyle(fontWeight = FontWeight.Bold), start, end)
+            } else {
+                addStyle(
+                    SpanStyle(
+                        fontFamily = FontFamily.Monospace,
+                        background = Color(0xFF444444),
+                        color = Color(0xFFF0F0F0)
+                    ), start, end
+                )
+            }
+            currentIndex = token.range.last + 1
+        }
+        // 添加剩余部分
+        if (currentIndex < text.length) {
+            append(text.substring(currentIndex))
         }
     }
 }

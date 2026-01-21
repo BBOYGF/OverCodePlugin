@@ -35,32 +35,6 @@ import java.util.*
 
 
 /**
- * 解析 Markdown 代码块
- */
-fun parseMessage(content: String): List<MessagePart> {
-    val parts = mutableListOf<MessagePart>()
-    val regex = """```(\w*)\n?([\s\S]*?)```""".toRegex()
-    var lastIndex = 0
-
-    regex.findAll(content).forEach { matchResult ->
-        val textBefore = content.substring(lastIndex, matchResult.range.first)
-        if (textBefore.isNotEmpty()) {
-            parts.add(MessagePart.Text(textBefore))
-        }
-        val language = matchResult.groups[1]?.value?.takeIf { it.isNotEmpty() }
-        val code = matchResult.groups[2]?.value ?: ""
-        parts.add(MessagePart.Code(code, language))
-        lastIndex = matchResult.range.last + 1
-    }
-
-    if (lastIndex < content.length) {
-        parts.add(MessagePart.Text(content.substring(lastIndex)))
-    }
-
-    return if (parts.isEmpty() && content.isNotEmpty()) listOf(MessagePart.Text(content)) else parts
-}
-
-/**
  * 底部输入区域
  */
 @OptIn(ExperimentalMaterial3Api::class)

@@ -16,12 +16,15 @@ data class GeminiRequest(
 
 @Serializable
 data class GeminiTool(
+    // 工具声明
     val functionDeclarations: List<GeminiFunctionDeclaration>
 )
 
 @Serializable
 data class GeminiFunctionDeclaration(
+    // 工具名称
     val name: String,
+    // 工具说明
     val description: String,
     // 参数 schema，通常是一个 OpenAPI 格式的 JsonObject
     val parameters: JsonObject? = null
