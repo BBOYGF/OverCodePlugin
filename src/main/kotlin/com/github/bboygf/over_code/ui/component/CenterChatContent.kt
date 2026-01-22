@@ -188,7 +188,14 @@ fun MessageBubble(
             }
 
             // 内容区域
-            val parts = remember(message.content) { parseMarkdown(message.content) }
+            val parts = remember(message.content) {
+                try {
+                    parseMarkdown(message.content)
+                } catch (e: Exception) {
+                    // 万一解析出错，至少保证 UI 不崩溃，显示原始文本
+                    listOf(MessagePart.Text(AnnotatedString(message.content)))
+                }
+            }
 
             Column(modifier = Modifier.padding(12.dp)) {
                 parts.forEach { part ->
@@ -241,8 +248,8 @@ fun MessageBubble(
                             CodeBlock(
                                 code = part.content,
                                 language = part.language,
-                                onCopy = { /* ... */ },
-                                onInsert = { /* ... */ }
+                                onCopy = {onCopyCode( part.content)},
+                                onInsert = { onInsertCode(part.content) }
                             )
                         }
                     }
@@ -400,17 +407,24 @@ fun parseInlineStyles(text: String): AnnotatedString {
 
         var currentIndex = 0
 
-        // 合并所有标记并按索引排序
+        // 合并所有匹配项并按起始位置排序
         val tokens = (boldRegex.findAll(text) + inlineCodeRegex.findAll(text))
             .sortedBy { it.range.first }
             .toList()
 
         for (token in tokens) {
+            // 【核心修复】：如果当前匹配项的开始位置小于 currentIndex，
+            // 说明它被之前的匹配项包含在内了（例如加粗里套了代码），直接跳过防止崩溃
+            if (token.range.first < currentIndex) continue
+
             // 添加匹配项之前的普通文本
-            append(text.substring(currentIndex, token.range.first))
+            if (token.range.first > currentIndex) {
+                append(text.substring(currentIndex, token.range.first))
+            }
 
             val isBold = token.value.startsWith("**")
-            val content = if (isBold) token.groupValues[1] else token.groupValues[1]
+            // 去掉标记符后的实际内容
+            val content = token.groupValues[1]
 
             val start = length
             append(content)
@@ -427,9 +441,11 @@ fun parseInlineStyles(text: String): AnnotatedString {
                     ), start, end
                 )
             }
+            // 更新当前位置到匹配项的最后
             currentIndex = token.range.last + 1
         }
-        // 添加剩余部分
+
+        // 添加最后剩余的文本
         if (currentIndex < text.length) {
             append(text.substring(currentIndex))
         }

@@ -357,16 +357,6 @@ fun BottomInputArea(
                             }
 
                         }
-                        Button(
-                            onClick = {
-                                addProjectIndex()
-                            },
-                            modifier = Modifier.width(130.dp)
-                                .height(40.dp),
-                            shape = RoundedCornerShape(5.dp)
-                        ) {
-                            Text("添加项目索引")
-                        }
 
                     }
 

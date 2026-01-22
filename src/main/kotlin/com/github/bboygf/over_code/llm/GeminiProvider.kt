@@ -123,7 +123,6 @@ class GeminiProvider(
                     setBody(requestBody)
                 }.execute { response ->
                     val channel: ByteReadChannel = response.bodyAsChannel()
-
                     // 在 chatStream 的 execute 块中
                     while (!channel.isClosedForRead) {
                         line = channel.readUTF8Line() ?: break

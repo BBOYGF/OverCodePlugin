@@ -8,6 +8,7 @@ import com.github.bboygf.over_code.enums.ChatRole
 import com.github.bboygf.over_code.llm.LLMService
 import com.github.bboygf.over_code.po.GeminiFunctionDeclaration
 import com.github.bboygf.over_code.po.GeminiPart
+import com.github.bboygf.over_code.po.GeminiResponse
 import com.github.bboygf.over_code.po.GeminiTool
 import com.github.bboygf.over_code.po.LLMMessage
 import com.github.bboygf.over_code.services.ChatDatabaseService
@@ -27,8 +28,13 @@ import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import com.github.bboygf.over_code.utils.ImageUtils
 import com.github.bboygf.over_code.utils.ProjectFileUtils
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
+import org.jetbrains.kotlin.idea.gradleTooling.get
 import java.util.UUID
 
 
@@ -220,6 +226,66 @@ class HomeViewModel(
                             put("type", "object")
                             put("properties", buildJsonObject {})
                         }
+                    ),
+                    GeminiFunctionDeclaration(
+                        name = "create_file_or_dir",
+                        description = "根据文件绝对路径创建文件或者目录",
+                        parameters = buildJsonObject {
+                            put("type", "object")
+                            put("properties", buildJsonObject {
+                                putJsonObject("absolutePath") {
+                                    put("type", "string")
+                                    put("description", "文件的绝对路径")
+                                }
+                                putJsonObject("isDirectory") {
+                                    put("type", "boolean") // 建议直接用 boolean 类型
+                                    put("description", "是否为目录，true表示目录，false表示文件")
+                                }
+                            })
+                        }
+                    ),
+                    GeminiFunctionDeclaration(
+                        name = "update_file_content",
+                        description = "根据绝对路径修改文件内容",
+                        parameters = buildJsonObject {
+                            put("type", "object")
+                            put("properties", buildJsonObject {
+                                putJsonObject("absolutePath") {
+                                    put("type", "string")
+                                    put("description", "文件的绝对路径")
+                                }
+                                putJsonObject("newContent") {
+                                    put("type", "string") // 建议直接用 boolean 类型
+                                    put("description", "新内容")
+                                }
+                            })
+                        }
+                    ),
+                    GeminiFunctionDeclaration(
+                        name = "read_file_content",
+                        description = "文件内容字符串，如果文件不存在则返回 null",
+                        parameters = buildJsonObject {
+                            put("type", "object")
+                            put("properties", buildJsonObject {
+                                putJsonObject("absolutePath") {
+                                    put("type", "string")
+                                    put("description", "文件的绝对路径")
+                                }
+                            })
+                        }
+                    ),
+                    GeminiFunctionDeclaration(
+                        name = "delete_file",
+                        description = "根据绝对路径删除文件或目录",
+                        parameters = buildJsonObject {
+                            put("type", "object")
+                            put("properties", buildJsonObject {
+                                putJsonObject("absolutePath") {
+                                    put("type", "string")
+                                    put("description", "文件的绝对路径")
+                                }
+                            })
+                        }
                     )
                 )
             )
@@ -288,7 +354,7 @@ class HomeViewModel(
         contentBuilder: StringBuilder, // 用于 UI 显示（累积所有文本）
         onScrollToBottom: () -> Unit
     ) {
-        var partList: List<GeminiPart> = mutableListOf()
+        var partList: ArrayList<GeminiPart> = ArrayList()
         // 关键修复：新增一个 StringBuilder 仅记录"当前这一轮"的文本，用于存入 history
         val currentTurnText = StringBuilder()
 
@@ -342,6 +408,40 @@ class HomeViewModel(
                     } catch (e: Exception) {
                         "读取项目失败: ${e.message}"
                     }
+                } else if (call.functionCall!!.name == "create_file_or_dir") {
+                    val args = call.functionCall!!.args
+                    // 安全地获取参数
+                    val path = args?.get("absolutePath")?.jsonPrimitive?.content ?: ""
+                    val isDir = args?.get("isDirectory")?.jsonPrimitive?.booleanOrNull ?: false
+                    val createFileOrDir = ProjectFileUtils.createFileOrDir(project!!, path, isDir)
+                    if (createFileOrDir == null || !createFileOrDir.exists()) {
+                        "创建失败！"
+                    } else {
+                        "创建成功！"
+                    }
+                } else if (call.functionCall!!.name == "update_file_content") {
+                    val args = call.functionCall!!.args
+                    // 安全地获取参数
+                    val path = args?.get("absolutePath")?.jsonPrimitive?.content ?: ""
+                    val content = args?.get("newContent")?.jsonPrimitive?.content ?: ""
+                    ProjectFileUtils.updateFileContent(project!!, path, content)
+                    "修改成功！"
+                } else if (call.functionCall!!.name == "read_file_content") {
+                    val args = call.functionCall!!.args
+                    // 安全地获取参数
+                    val path = args?.get("absolutePath")?.jsonPrimitive?.content ?: ""
+                    val readFileContent = ProjectFileUtils.readFileContent(path)
+                    if (readFileContent != null) {
+                        readFileContent
+                    } else {
+                        "null"
+                    }
+                } else if (call.functionCall!!.name == "delete_file") {
+                    val args = call.functionCall!!.args
+                    // 安全地获取参数
+                    val path = args?.get("absolutePath")?.jsonPrimitive?.content ?: ""
+                    ProjectFileUtils.deleteFile(project!!, path)
+                    "执行结束"
                 } else {
                     "Unknown function: ${call.functionCall.name}"
                 }
@@ -371,20 +471,7 @@ class HomeViewModel(
                 onScrollToBottom = onScrollToBottom
             )
         }
-
-        // 4. 【关键修复】无论成功还是失败，只要有内容生成，就保存到数据库
-        val finalContent = contentBuilder.toString()
-        if (finalContent.isNotBlank() && finalContent != "...") {
-            dbService?.saveMessage(
-                ChatMessage(
-                    id = UUID.randomUUID().toString(),
-                    content = finalContent,
-                    chatRole = ChatRole.助理
-                ),
-                currentSessionId
-            )
-        }
-
+        partList.clear()
     }
 
 
