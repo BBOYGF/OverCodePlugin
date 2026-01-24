@@ -378,14 +378,18 @@ class HomeViewModel(
                 partList += call
             },
         )
+        var contentStr = contentBuilder.toString()
+        if(contentStr.isEmpty() && partList.isNotEmpty()){
+            contentStr="调用工具"
+        }
         val assistantMessage = ChatMessage(
             id = System.currentTimeMillis().toString(),
-            content = contentBuilder.toString(),
+            content = contentStr,
             chatRole = ChatRole.助理
         )
         // 优化：简化 List 更新逻辑
         chatMessages = chatMessages + assistantMessage
-        dbService?.saveMessage(assistantMessage, currentSessionId)
+        dbService?.saveMessage(assistantMessage,  )
         // API 这一轮结束
         if (partList.isNotEmpty()) {
             for (call in partList) {
