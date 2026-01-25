@@ -4,6 +4,7 @@ package com.github.bboygf.over_code.utils
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.io.File
 
+
 class ConfigUtilsTest : BasePlatformTestCase() {
 
     private val testFilePath = "test_config.properties"
@@ -66,10 +67,12 @@ class ConfigUtilsTest : BasePlatformTestCase() {
         assertEquals(99, config.getInt("error_num", 99))
     }
 
-    fun `test async get`()  {
+    fun `test async get`() {
         config.set("async_key", "hello")
 
 //        val value = config.getStringAsync("async_key")
 //        assertEquals("hello", value)
     }
+
+
 }

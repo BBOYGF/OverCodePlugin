@@ -9,7 +9,16 @@ import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.PsiClassOwner
+import com.intellij.psi.PsiDocCommentOwner
+import com.intellij.psi.PsiManager
+import com.intellij.psi.PsiMethod
+import com.intellij.psi.search.FilenameIndex
+import com.intellij.psi.search.GlobalSearchScope
+import com.intellij.psi.util.endOffset
+import com.intellij.psi.util.startOffset
 import kotlinx.io.IOException
+import org.jetbrains.kotlin.psi.KtNamedFunction
 import java.io.File
 
 object ProjectFileUtils {
@@ -44,6 +53,7 @@ object ProjectFileUtils {
                 true // 返回 true 继续遍历，false 停止遍历
             }
         }
+
 
         return sb.toString()
     }
@@ -107,7 +117,6 @@ object ProjectFileUtils {
      */
     fun deleteFile(project: Project, absolutePath: String) {
         val path = FileUtil.toSystemIndependentName(absolutePath)
-
         // 先尝试在 VFS 中找到这个文件 (需要刷新以确保同步)
         val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByPath(path) ?: return
 
@@ -170,6 +179,61 @@ object ProjectFileUtils {
                 e.printStackTrace()
                 null
             }
+        }
+    }
+
+    /**
+     * 根据文件获取文件内所有方法详情
+     * @param project 项目
+     * @param fileName 文件名
+     */
+    fun getFunInfo(project: Project, fileName: String): String {
+        var finalFileName = fileName
+        val file = File(fileName)
+        if (file.exists() && file.isFile) {
+            finalFileName = file.name
+        }
+        return runReadAction {
+            // 1. 获取 VirtualFile 集合 (最新推荐 API)
+            val virtualFiles = FilenameIndex.getVirtualFilesByName(
+                finalFileName,
+                GlobalSearchScope.projectScope(project)
+            )
+            val stringBuilder = StringBuilder()
+            val psiManager = PsiManager.getInstance(project)
+            virtualFiles.forEach { virtualFile ->
+                // 2. 将 VirtualFile 转换为 PsiFile
+                val psiFile = psiManager.findFile(virtualFile)
+                // 3. 提取类
+                if (psiFile is PsiClassOwner) {
+                    val classes = psiFile.classes
+                    classes.forEach { psiClass ->
+//                    println("找到类: ${psiClass.qualifiedName}")
+                        val methods: Array<PsiMethod?> = psiClass.methods
+                        methods.forEach { method ->
+                            if (method != null && method.isConstructor) {
+                                return@forEach
+                            }
+                            stringBuilder.append("方法名：${method?.name}")
+                            val commentText = method?.let { m ->
+                                // navigationElement 会自动处理 Kotlin/Java 的源码定位
+                                val originalElement = m.navigationElement
+                                // PsiDocCommentOwner 是 Java 和 Kotlin 共同实现的接口
+                                if (originalElement is PsiDocCommentOwner) {
+                                    originalElement.docComment?.text
+                                } else {
+                                    null
+                                }
+                            }
+                            stringBuilder.append("备注：${commentText ?: ""}")
+                            stringBuilder.append("开始行：${method?.startOffset} 结束行：${method?.endOffset}")
+                            stringBuilder.append("参数：${method?.parameterList?.text}")
+//                        println("完整：${method?.text}")
+                        }
+                    }
+                }
+            }
+            stringBuilder.toString()
         }
     }
 

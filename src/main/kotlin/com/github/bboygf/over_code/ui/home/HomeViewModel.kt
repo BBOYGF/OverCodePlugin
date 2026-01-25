@@ -8,7 +8,6 @@ import com.github.bboygf.over_code.enums.ChatRole
 import com.github.bboygf.over_code.llm.LLMService
 import com.github.bboygf.over_code.po.GeminiFunctionDeclaration
 import com.github.bboygf.over_code.po.GeminiPart
-import com.github.bboygf.over_code.po.GeminiResponse
 import com.github.bboygf.over_code.po.GeminiTool
 import com.github.bboygf.over_code.po.LLMMessage
 import com.github.bboygf.over_code.services.ChatDatabaseService
@@ -28,14 +27,11 @@ import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import com.github.bboygf.over_code.utils.ImageUtils
 import com.github.bboygf.over_code.utils.ProjectFileUtils
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
-import org.jetbrains.kotlin.idea.gradleTooling.get
-import java.util.UUID
 
 
 /**
@@ -286,6 +282,19 @@ class HomeViewModel(
                                 }
                             })
                         }
+                    ),
+                    GeminiFunctionDeclaration(
+                        name = "get_fun_info",
+                        description = "根据文件获取文件内所有方法详情",
+                        parameters = buildJsonObject {
+                            put("type", "object")
+                            put("properties", buildJsonObject {
+                                putJsonObject("fileName") {
+                                    put("type", "string")
+                                    put("description", "文件名")
+                                }
+                            })
+                        }
                     )
                 )
             )
@@ -379,8 +388,8 @@ class HomeViewModel(
             },
         )
         var contentStr = contentBuilder.toString()
-        if(contentStr.isEmpty() && partList.isNotEmpty()){
-            contentStr="调用工具"
+        if (contentStr.isEmpty() && partList.isNotEmpty()) {
+            contentStr = "调用工具"
         }
         val assistantMessage = ChatMessage(
             id = System.currentTimeMillis().toString(),
@@ -389,7 +398,7 @@ class HomeViewModel(
         )
         // 优化：简化 List 更新逻辑
         chatMessages = chatMessages + assistantMessage
-        dbService?.saveMessage(assistantMessage,  )
+        dbService?.saveMessage(assistantMessage)
         // API 这一轮结束
         if (partList.isNotEmpty()) {
             for (call in partList) {
@@ -446,6 +455,12 @@ class HomeViewModel(
                     val path = args?.get("absolutePath")?.jsonPrimitive?.content ?: ""
                     ProjectFileUtils.deleteFile(project!!, path)
                     "执行结束"
+                } else if (call.functionCall!!.name == "get_fun_info") {
+                    val args = call.functionCall!!.args
+                    // 安全地获取参数
+                    val fileName = args?.get("fileName")?.jsonPrimitive?.content ?: ""
+                    val result = ProjectFileUtils.getFunInfo(project!!, fileName)
+                    result
                 } else {
                     "Unknown function: ${call.functionCall.name}"
                 }
