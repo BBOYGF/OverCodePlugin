@@ -13,6 +13,7 @@
     <depends>com.intellij.modules.java</depends>
 <!--    <depends>org.jetbrains.kotlin</depends>-->
 
+
     <!-- 国际化资源包。指向 src/main/resources/messages/MyBundle.properties，用于管理多语言文案。 -->
     <resource-bundle>messages.MyBundle</resource-bundle>
 

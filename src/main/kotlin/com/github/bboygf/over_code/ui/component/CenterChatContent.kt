@@ -1,6 +1,10 @@
 package com.github.bboygf.over_code.ui.component
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +21,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.rounded.DateRange
 import androidx.compose.material3.Card
@@ -25,7 +32,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -146,119 +156,166 @@ fun MessageBubble(
     onCopyCode: (String) -> Unit = {},
     onInsertCode: (String) -> Unit = {}
 ) {
-    // 消息内容
+    // 是否是工具/函数调用角色
+    val isTool = message.chatRole == ChatRole.工具
+    // 控制展开状态，默认收起(false)
+    var expanded by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier.fillMaxWidth().padding(4.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (message.chatRole == ChatRole.用户) Color(0xFF3C3F41) else Color(0xFF3C3F41)
+            containerColor = if (isTool) Color(0xFF2B2D30) else Color(0xFF3C3F41)
         ),
         shape = RoundedCornerShape(8.dp)
     ) {
         Column(Modifier.fillMaxWidth()) {
-            // 头部信息
+            // 头部信息 - 如果是工具，点击整行可折叠
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(32.dp)
-                    .padding(horizontal = 8.dp)
-                    .background(
-                        color = Color(0xFF3C3F41),
-                    ),
+                    .background(color = Color(0xFF3C3F41))
+                    .clickable(enabled = isTool) { expanded = !expanded } // 仅工具角色可点击
+                    .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
-                if (message.chatRole== ChatRole.用户) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        when (message.chatRole) {
+                            ChatRole.用户 -> {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = "用户",
+                                    tint = Color(0xFFdfe1e5),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(text = "我", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
+                            ChatRole.工具 -> {
+                                Icon(
+                                    imageVector = Icons.Default.Build, // 工具图标
+                                    contentDescription = "工具",
+                                    tint = Color(0xFF4A9D5F),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "Tool Execution",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF4A9D5F)
+                                )
+                            }
+                            else -> {
+                                Text(
+                                    text = "Over Code:",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF4A9D5F),
+                                )
+                            }
+                        }
+                    }
+
+                    // 如果是工具，显示折叠箭头
+                    if (isTool) {
                         Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = "用户",
-                            tint = Color(0xFFdfe1e5),
+                            imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Toggle",
+                            tint = Color.Gray,
                             modifier = Modifier.size(20.dp)
                         )
-                        Spacer(Modifier.width(8.dp))
-                        Text(text = "我", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
-                } else {
-                    Text(
-                        text = "Over Code:",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF4A9D5F),
-                    )
                 }
             }
 
             // 内容区域
-            val parts = remember(message.content) {
-                try {
-                    parseMarkdown(message.content)
-                } catch (e: Exception) {
-                    // 万一解析出错，至少保证 UI 不崩溃，显示原始文本
-                    listOf(MessagePart.Text(AnnotatedString(message.content)))
+            val contentBody = @Composable {
+                val parts = remember(message.content) {
+                    try {
+                        parseMarkdown(message.content)
+                    } catch (e: Exception) {
+                        listOf(MessagePart.Text(AnnotatedString(message.content)))
+                    }
                 }
-            }
 
-            Column(modifier = Modifier.padding(12.dp)) {
-                parts.forEach { part ->
-                    when (part) {
-                        is MessagePart.Header -> {
-                            SelectionContainer {
-                                Text(
-                                    text = part.content,
-                                    style = TextStyle(
-                                        fontSize = when (part.level) {
-                                            1 -> 24.sp
-                                            2 -> 20.sp
-                                            else -> 18.sp
-                                        },
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFF4A9D5F) // 标题用绿色凸显
-                                    ),
-                                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
-                                )
-                            }
-                        }
-
-                        is MessagePart.ListItem -> {
-                            Row(modifier = Modifier.padding(4.dp)) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    parts.forEach { part ->
+                        when (part) {
+                            is MessagePart.Header -> {
                                 SelectionContainer {
                                     Text(
-                                        text = if (part.index != null) "${part.index}. " else "• ",
-                                        color = Color(0xFF4A9D5F),
-                                        fontWeight = FontWeight.Bold
+                                        text = part.content,
+                                        style = TextStyle(
+                                            fontSize = when (part.level) {
+                                                1 -> 24.sp
+                                                2 -> 20.sp
+                                                else -> 18.sp
+                                            },
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF4A9D5F)
+                                        ),
+                                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
                                     )
                                 }
-                                SelectionContainer {
-                                    Text(text = part.content, color = Color.White, lineHeight = 20.sp)
+                            }
+                            is MessagePart.ListItem -> {
+                                Row(modifier = Modifier.padding(4.dp)) {
+                                    SelectionContainer {
+                                        Text(
+                                            text = if (part.index != null) "${part.index}. " else "• ",
+                                            color = Color(0xFF4A9D5F),
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    SelectionContainer {
+                                        Text(text = part.content, color = Color.White, lineHeight = 20.sp)
+                                    }
                                 }
                             }
-                        }
-
-                        is MessagePart.Text -> {
-                            SelectionContainer {
-                                Text(
-                                    text = part.content,
-                                    color = Color.White,
-                                    lineHeight = 22.sp,
-                                    modifier = Modifier.padding(vertical = 4.dp)
+                            is MessagePart.Text -> {
+                                SelectionContainer {
+                                    Text(
+                                        text = part.content,
+                                        color = Color.White,
+                                        lineHeight = 22.sp,
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    )
+                                }
+                            }
+                            is MessagePart.Code -> {
+                                CodeBlock(
+                                    code = part.content,
+                                    language = part.language,
+                                    onCopy = { onCopyCode(part.content) },
+                                    onInsert = { onInsertCode(part.content) }
                                 )
                             }
-                        }
-
-                        is MessagePart.Code -> {
-                            CodeBlock(
-                                code = part.content,
-                                language = part.language,
-                                onCopy = {onCopyCode( part.content)},
-                                onInsert = { onInsertCode(part.content) }
-                            )
                         }
                     }
                 }
             }
+
+            // 根据角色决定是否折叠
+            if (isTool) {
+                AnimatedVisibility(
+                    visible = expanded,
+                    enter = expandVertically(),
+                    exit = shrinkVertically()
+                ) {
+                    contentBody()
+                }
+            } else {
+                contentBody()
+            }
         }
     }
 }
-
 /**
  * 代码块组件
  */

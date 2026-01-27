@@ -299,7 +299,7 @@ class HomeViewModel(
                     ),
                     GeminiFunctionDeclaration(
                         name = "get_method_detail",
-                        description = "根据文件名和方法名获取特定方法的详情",
+                        description = "根据文件名和方法名获取特定方法的详情及代码位置（index）",
                         parameters = buildJsonObject {
                             put("type", "object")
                             put("properties", buildJsonObject {
@@ -314,27 +314,30 @@ class HomeViewModel(
                             })
                         }
                     ),
-                    GeminiFunctionDeclaration(
-                        name = "replace_method_content",
-                        description = "替换指定文件中的方法",
-                        parameters = buildJsonObject {
-                            put("type", "object")
-                            put("properties", buildJsonObject {
-                                putJsonObject("fileName") {
-                                    put("type", "string")
-                                    put("description", "文件名")
-                                }
-                                putJsonObject("methodName") {
-                                    put("type", "string") // 建议直接用 boolean 类型
-                                    put("description", "要替换的方法名")
-                                }
-                                putJsonObject("newMethodCode") {
-                                    put("type", "string") // 建议直接用 boolean 类型
-                                    put("description", "新的方法完整代码字符串 (例如: \"fun hello() { println(\\\"hi\\\") }\")")
-                                }
-                            })
-                        }
-                    ),
+//                    GeminiFunctionDeclaration(
+//                        name = "replace_method_content",
+//                        description = "替换指定文件中的方法",
+//                        parameters = buildJsonObject {
+//                            put("type", "object")
+//                            put("properties", buildJsonObject {
+//                                putJsonObject("fileName") {
+//                                    put("type", "string")
+//                                    put("description", "文件名")
+//                                }
+//                                putJsonObject("methodName") {
+//                                    put("type", "string") // 建议直接用 boolean 类型
+//                                    put("description", "要替换的方法名")
+//                                }
+//                                putJsonObject("newMethodCode") {
+//                                    put("type", "string") // 建议直接用 boolean 类型
+//                                    put(
+//                                        "description",
+//                                        "新的方法完整代码字符串 (例如: \"fun hello() { println(\\\"hi\\\") }\")"
+//                                    )
+//                                }
+//                            })
+//                        }
+//                    ),
                     GeminiFunctionDeclaration(
                         name = "replace_code_by_offset",
                         description = "根据字符偏移量（Index）替换文件内容",
@@ -453,7 +456,7 @@ class HomeViewModel(
         )
         var contentStr = contentBuilder.toString()
         if (contentStr.isEmpty() && partList.isNotEmpty()) {
-            contentStr = "调用工具"
+            contentStr = "调用工具\n" + partList.map { geminiPart -> geminiPart.functionCall?.name }.joinToString(",")
         }
         val assistantMessage = ChatMessage(
             id = System.currentTimeMillis().toString(),
@@ -528,24 +531,27 @@ class HomeViewModel(
                     val methodName = args["methodName"]?.jsonPrimitive?.content ?: ""
                     val result = ProjectFileUtils.getMethodDetail(project!!, fileName, methodName)
                     result
-                } else if (call.functionCall.name == "replace_method_content") {
-                    val args = call.functionCall.args
-                    // 安全地获取参数
-                    val fileName = args["fileName"]?.jsonPrimitive?.content ?: ""
-                    val methodName = args["methodName"]?.jsonPrimitive?.content ?: ""
-                    val newMethodCode = args["newMethodCode"]?.jsonPrimitive?.content ?: ""
-                    val result = ProjectFileUtils.replaceMethodContent(project!!, fileName, methodName, newMethodCode)
-                    result
-                } else if (call.functionCall.name == "replace_code_by_offset") {
+                }
+//                else if (call.functionCall.name == "replace_method_content") {
+//                    val args = call.functionCall.args
+//                    // 安全地获取参数
+//                    val fileName = args["fileName"]?.jsonPrimitive?.content ?: ""
+//                    val methodName = args["methodName"]?.jsonPrimitive?.content ?: ""
+//                    val newMethodCode = args["newMethodCode"]?.jsonPrimitive?.content ?: ""
+//                    val result = ProjectFileUtils.replaceMethodContent(project!!, fileName, methodName, newMethodCode)
+//                    result
+//                }
+                else if (call.functionCall.name == "replace_code_by_offset") {
                     val args = call.functionCall.args
                     // 安全地获取参数
                     val fileName = args["fileName"]?.jsonPrimitive?.content ?: ""
                     val startOffset = args["startOffset"]?.jsonPrimitive?.int ?: 0
                     val endOffset = args["endOffset"]?.jsonPrimitive?.int ?: 0
                     val newCodeString = args["newCodeString"]?.jsonPrimitive?.content ?: ""
-                    val result = ProjectFileUtils.replaceCodeByOffset(project!!, fileName, startOffset, endOffset,newCodeString)
+                    val result =
+                        ProjectFileUtils.replaceCodeByOffset(project!!, fileName, startOffset, endOffset, newCodeString)
                     result
-                }else {
+                } else {
                     "Unknown function: ${call.functionCall.name}"
                 }
                 // 5. 将“执行结果”加入历史

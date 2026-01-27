@@ -2,8 +2,12 @@ package com.github.bboygf.over_code
 
 import com.github.bboygf.over_code.utils.ProjectFileUtils
 import com.github.bboygf.over_code.utils.ProjectFileUtils.getFileFunInfo
+import com.github.bboygf.over_code.utils.ProjectFileUtils.getMethodDetail
 import com.github.bboygf.over_code.utils.ProjectFileUtils.replaceCodeByOffset
+import com.github.bboygf.over_code.utils.ProjectFileUtils.replaceMethodContent
 import com.intellij.ide.highlighter.XmlFileType
+import com.intellij.psi.search.FilenameIndex
+import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.xml.XmlFile
 import com.intellij.testFramework.TestDataPath
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -54,45 +58,49 @@ class MyPluginTest : BasePlatformTestCase() {
     /**
      * 测试 AllClassesSearch 功能
      */
-    fun testGetAllClass() {
+    fun testReplaceCodeByOffset() {
         // 1. 准备：添加测试类到虚拟项目
         myFixture.copyDirectoryToProject("myClasses", "src")
 
-        // 1. 获取 VirtualFile 集合 (最新推荐 API)
-//        val virtualFiles = FilenameIndex.getVirtualFilesByName(
-//            "ProjectFileUtils.kt",
-//            GlobalSearchScope.projectScope(project)
-//        )
-//        val funInfo = getFileFunInfo(project, "FileNameUtils.java")
-//        val methodDetail = getMethodDetail(project, "FileNameUtils.java", "sanitizeFileName")
-//        println(methodDetail)
 
-//        replaceMethodContent(
-//            project,
-//            "ProjectFileUtils.kt",
-//            "createFileOrDir",
-//            "fun abc() {\n" +
-//                    "        println(\"Hello, world!\") \n" +
-//                    "    }"
-//        )
-//
-//        val methodDetail = getMethodDetail(project, "ProjectFileUtils.kt", "abc")
-//        println(methodDetail)
-
-//        val fileTextAfterStep1 = myFixture.getFileAtCaret().text // 或者通过虚拟文件读取
-//        println("步骤1后内容：\n$fileTextAfterStep1")
-
-        replaceCodeByOffset(
+        val replaceCodeByOffset = replaceCodeByOffset(
             project, "ProjectFileUtils.kt", 0, 1, """
     fun newMethod() {
         println("This is new code")
     }
     """.trimIndent()
         )
+        println(replaceCodeByOffset)
         val methodDetail2 = getFileFunInfo(project, "ProjectFileUtils.kt")
         println(methodDetail2)
     }
 
+    /**
+     * 测试替换方法
+     */
+    fun testReplaceMethodContent() {
+        myFixture.copyDirectoryToProject("myClasses", "src")
+        // 1. 获取 VirtualFile 集合 (最新推荐 API)
+        val virtualFiles = FilenameIndex.getVirtualFilesByName(
+            "ProjectFileUtils.kt",
+            GlobalSearchScope.projectScope(project)
+        )
+
+        val methodDetail = getMethodDetail(project, "ProjectFileUtils.kt", "createFileOrDir")
+        println(methodDetail)
+
+        val replaceMethodContent = replaceMethodContent(
+            project,
+            "ProjectFileUtils.kt",
+            "createFileOrDir",
+            "fun abc() {\n" +
+                    "        println(\"Hello, world!\") \n" +
+                    "    }"
+        )
+        println(replaceMethodContent)
+        val funInfo = getFileFunInfo(project, "ProjectFileUtils.kt")
+        println(funInfo)
+    }
 
     override fun getTestDataPath() = "src/test/testData"
 

@@ -83,6 +83,7 @@ dependencies {
 
         // 引入测试框架
         testFramework(TestFrameworkType.Platform)
+
     }
 }
 

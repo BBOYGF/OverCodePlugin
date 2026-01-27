@@ -2,7 +2,6 @@ package com.github.bboygf.over_code.utils
 
 import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.command.WriteCommandAction
-import com.intellij.openapi.editor.Document
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
@@ -13,21 +12,13 @@ import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.psi.PsiClassOwner
-import com.intellij.psi.PsiDocCommentOwner
-import com.intellij.psi.PsiDocumentManager
-import com.intellij.psi.PsiElement
-import com.intellij.psi.PsiElementFactory
-import com.intellij.psi.PsiManager
-import com.intellij.psi.PsiMethod
-import com.intellij.psi.SyntaxTraverser
+import com.intellij.psi.*
 import com.intellij.psi.codeStyle.CodeStyleManager
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.util.endOffset
 import com.intellij.psi.util.startOffset
 import kotlinx.io.IOException
-import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.KtPsiFactory
 import java.io.File
@@ -253,7 +244,7 @@ object ProjectFileUtils {
                             stringBuilder.append("备注：${commentText ?: ""}\r\n")
                             stringBuilder.append("方法名：${method?.name}\r\n")
                             stringBuilder.append("参数：${method?.parameterList?.text}}\r\n")
-                            stringBuilder.append("开始行：${method?.startOffset} 结束行：${method?.endOffset}\r\n")
+                            stringBuilder.append("方法(index)下标：${method?.startOffset} - ${method?.endOffset}\n")
                         }
                     }
                 }
@@ -299,7 +290,7 @@ object ProjectFileUtils {
                             stringBuilder.append("--- 方法详情 ---\n")
                             stringBuilder.append("所属类：${psiClass.qualifiedName}\n")
                             stringBuilder.append("${method.text}\n")
-                            stringBuilder.append("方法位置：${method.startOffset} - ${method.endOffset}\n")
+                            stringBuilder.append("方法(index)下标：${method.startOffset} - ${method.endOffset}\n")
                         }
                     }
                 }
@@ -321,68 +312,75 @@ object ProjectFileUtils {
         }
     }
 
-    /**
-     * 替换指定文件中的方法
-     * @param project 项目
-     * @param fileName 文件名
-     * @param methodName 要替换的方法名
-     * @param newMethodCode 新的方法完整代码字符串 (例如: "fun hello() { println(\"hi\") }")
-     */
-    fun replaceMethodContent(project: Project, fileName: String, methodName: String, newMethodCode: String): String {
-        val finalFileName = File(fileName).name
-        val virtualFiles = FilenameIndex.getVirtualFilesByName(
-            finalFileName,
-            GlobalSearchScope.projectScope(project)
-        )
-
-        if (virtualFiles.isEmpty()) {
-            return "失败：未找到文件 $finalFileName"
-        }
-
-        val psiManager = PsiManager.getInstance(project)
-        val resultSummary = StringBuilder()
-        var totalReplacedCount = 0
-
-        virtualFiles.forEach { virtualFile ->
-            val psiFile = psiManager.findFile(virtualFile) ?: return@forEach
-
-            // 使用 runWriteCommandAction 的返回值，或者在内部修改外部变量
-            val countInFile = WriteCommandAction.runWriteCommandAction<Int>(project) {
-                var replacedCount = 0
-                try {
-                    val allElements = SyntaxTraverser.psiTraverser(psiFile).toList()
-                    for (element in allElements) {
-                        val isMatch = when (element) {
-                            is PsiMethod -> element.name == methodName && !element.isConstructor
-                            is KtNamedFunction -> element.name == methodName
-                            else -> false
-                        }
-
-                        if (isMatch) {
-                            val realElement = element.navigationElement
-                            replacePsiElement(project, realElement, newMethodCode)
-                            replacedCount++
-                        }
-                    }
-                } catch (e: Exception) {
-                    // 如果发生异常，可以在这里记录或重新抛出
-                    e.printStackTrace()
-                }
-                replacedCount // lambda 表达式最后一行作为返回值
-            }
-
-            if (countInFile > 0) {
-                resultSummary.append("文件 [${virtualFile.name}] 成功替换 $countInFile 处方法；")
-                totalReplacedCount += countInFile
-            }
-        }
-
-        return if (totalReplacedCount > 0) {
-            "成功：$resultSummary"
-        } else {
-            "失败：在找到的文件中未匹配到方法名 [$methodName]"
-        }
-    }
+//    /**
+//     * 替换指定文件中的方法
+//     * @param project 项目
+//     * @param fileName 文件名
+//     * @param methodName 要替换的方法名
+//     * @param newMethodCode 新的方法完整代码字符串 (例如: "fun hello() { println(\"hi\") }")
+//     */
+//    fun replaceMethodContent(project: Project, fileName: String, methodName: String, newMethodCode: String): String {
+//        val finalFileName = File(fileName).name
+//
+//        // 1. 获取 VirtualFiles (需要 ReadAction)
+//        val virtualFiles = runReadAction {
+//            FilenameIndex.getVirtualFilesByName(
+//                finalFileName,
+//                GlobalSearchScope.projectScope(project)
+//            )
+//        }
+//
+//        if (virtualFiles.isEmpty()) return "失败：未找到文件 $finalFileName"
+//
+//        val resultSummary = StringBuilder()
+//        var totalReplacedCount = 0
+//
+//        virtualFiles.forEach { virtualFile ->
+//            // 2. 获取 PSI (需要 ReadAction)
+//            val psiFile = runReadAction {
+//                PsiManager.getInstance(project).findFile(virtualFile)
+//            } ?: return@forEach
+//
+//            // 3. 执行修改 (WriteCommandAction 会自动处理写锁)
+//            try {
+//                val countInFile = WriteCommandAction.writeCommandAction(project, psiFile)
+//                    .withName("AI Replace Method")
+//                    .withGroupId("OverCodeGroup")
+//                    .compute<Int, Throwable> {
+//                        var replacedCount = 0
+//
+//                        // 优化：使用更精确的深度优先遍历，只找方法和函数
+//                        psiFile.accept(object : PsiRecursiveElementWalkingVisitor() {
+//                            override fun visitElement(element: PsiElement) {
+//                                val isMatch = when (element) {
+//                                    is PsiMethod -> element.name == methodName && !element.isConstructor
+//                                    is KtNamedFunction -> element.name == methodName
+//                                    else -> false
+//                                }
+//
+//                                if (isMatch) {
+//                                    // 找到匹配项，执行替换
+//                                    replacePsiElement(project, element.navigationElement, newMethodCode)
+//                                    replacedCount++
+//                                    // 如果一个文件里只打算替换一个同名方法，可以调用 stopWalking()
+//                                }
+//                                super.visitElement(element)
+//                            }
+//                        })
+//                        replacedCount
+//                    }
+//
+//                if (countInFile > 0) {
+//                    resultSummary.append("[${virtualFile.name}] 替换 $countInFile 处;")
+//                    totalReplacedCount += countInFile
+//                }
+//            } catch (e: Exception) {
+//                resultSummary.append("[${virtualFile.name}] 出错: ${e.message};")
+//            }
+//        }
+//
+//        return if (totalReplacedCount > 0) "成功：$resultSummary" else "失败：未匹配到方法名"
+//    }
 
     /**
      * 执行底层的 PSI 替换逻辑
@@ -420,11 +418,19 @@ object ProjectFileUtils {
         endOffset: Int,
         newCodeString: String
     ): String {
-        val finalFileName = File(fileName).name
-        val virtualFiles = FilenameIndex.getVirtualFilesByName(
-            finalFileName,
-            GlobalSearchScope.projectScope(project)
-        )
+        var finalFileName = fileName
+        val file = File(fileName)
+        if (file.exists()) {
+            finalFileName = file.name
+        }
+
+        // 修复点 1: 在 ReadAction 中获取文件列表
+        val virtualFiles = runReadAction {
+            FilenameIndex.getVirtualFilesByName(
+                finalFileName,
+                GlobalSearchScope.projectScope(project)
+            )
+        }
 
         if (virtualFiles.isEmpty()) {
             return "失败：未找到文件 $finalFileName"
