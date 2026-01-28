@@ -3,8 +3,7 @@ package com.github.bboygf.over_code
 import com.github.bboygf.over_code.utils.ProjectFileUtils
 import com.github.bboygf.over_code.utils.ProjectFileUtils.getFileFunInfo
 import com.github.bboygf.over_code.utils.ProjectFileUtils.getMethodDetail
-import com.github.bboygf.over_code.utils.ProjectFileUtils.replaceCodeByOffset
-import com.github.bboygf.over_code.utils.ProjectFileUtils.replaceMethodContent
+import com.github.bboygf.over_code.utils.ProjectFileUtils.replaceCodeByLine
 import com.intellij.ide.highlighter.XmlFileType
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
@@ -63,7 +62,7 @@ class MyPluginTest : BasePlatformTestCase() {
         myFixture.copyDirectoryToProject("myClasses", "src")
 
 
-        val replaceCodeByOffset = replaceCodeByOffset(
+        val replaceCodeByOffset = replaceCodeByLine(
             project, "ProjectFileUtils.kt", 0, 1, """
     fun newMethod() {
         println("This is new code")
@@ -89,17 +88,17 @@ class MyPluginTest : BasePlatformTestCase() {
         val methodDetail = getMethodDetail(project, "ProjectFileUtils.kt", "createFileOrDir")
         println(methodDetail)
 
-        val replaceMethodContent = replaceMethodContent(
-            project,
-            "ProjectFileUtils.kt",
-            "createFileOrDir",
-            "fun abc() {\n" +
-                    "        println(\"Hello, world!\") \n" +
-                    "    }"
-        )
-        println(replaceMethodContent)
-        val funInfo = getFileFunInfo(project, "ProjectFileUtils.kt")
-        println(funInfo)
+//        val replaceMethodContent = replaceMethodContent(
+//            project,
+//            "ProjectFileUtils.kt",
+//            "createFileOrDir",
+//            "fun abc() {\n" +
+//                    "        println(\"Hello, world!\") \n" +
+//                    "    }"
+//        )
+//        println(replaceMethodContent)
+//        val funInfo = getFileFunInfo(project, "ProjectFileUtils.kt")
+//        println(funInfo)
     }
 
     override fun getTestDataPath() = "src/test/testData"

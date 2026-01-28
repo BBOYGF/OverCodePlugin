@@ -6,6 +6,7 @@ import com.github.bboygf.over_code.po.GeminiContent
 import com.github.bboygf.over_code.po.GeminiPart
 import com.github.bboygf.over_code.po.GeminiRequest
 import com.github.bboygf.over_code.po.GeminiResponse
+import com.github.bboygf.over_code.utils.Log
 import com.intellij.openapi.diagnostic.thisLogger
 import io.ktor.client.*
 import io.ktor.client.call.*
@@ -156,7 +157,7 @@ class GeminiProvider(
                     }
                 }
             } catch (e: Exception) {
-                println("调用模型产生异常：${e.message} line:$line")
+                Log.error("Gemini 访问异常", e)
                 if (e is CancellationException) throw e
                 throw LLMException("流式调用 Gemini API 失败: ${e.message}", e)
             }

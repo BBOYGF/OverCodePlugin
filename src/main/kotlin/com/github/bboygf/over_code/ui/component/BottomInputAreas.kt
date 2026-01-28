@@ -25,6 +25,8 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.github.bboygf.over_code.enums.ChatPattern
+import com.github.bboygf.over_code.utils.Log
 import com.github.bboygf.over_code.vo.MessagePart
 import com.github.bboygf.over_code.vo.ModelConfigInfo
 import kotlinx.coroutines.delay
@@ -45,8 +47,8 @@ fun BottomInputArea(
     isLoading: Boolean,
     onSend: () -> Unit,
     activeModelName: String,
-    chatMode: String,
-    onModeChange: (String) -> Unit,
+    chatMode: ChatPattern,
+    onModeChange: (ChatPattern) -> Unit,
     modelConfigs: List<ModelConfigInfo>,
     onModelSelect: (String) -> Unit,
     backgroundColor: Color,
@@ -179,6 +181,7 @@ fun BottomInputArea(
                     modifier = Modifier
                         .fillMaxWidth()
                         .onPreviewKeyEvent {
+                            Log.info("PreviewKeyEvent: ${it.key}")
                             if (it.key == Key.V && (it.isCtrlPressed || it.isMetaPressed) && it.type == KeyEventType.KeyDown) {
                                 if (onPasteImage()) {
                                     return@onPreviewKeyEvent true
@@ -212,7 +215,7 @@ fun BottomInputArea(
                         .onFocusChanged {
                             if (it.isFocused && !focused) { // 只有在从没焦点变为有焦点时触发
                                 scope.launch {
-                                    delay(500) // 很短的延迟，用户无感知
+//                                    delay(400) // 很短的延迟，用户无感知
                                     onInputChange(inputText.copy(selection = TextRange(inputText.text.length)))
                                 }
                             }
@@ -238,7 +241,7 @@ fun BottomInputArea(
                     minLines = 1
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+
 
                 // 底部：下拉列表和发送按钮
                 Row(
@@ -256,7 +259,7 @@ fun BottomInputArea(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = chatMode,
+                                    text = chatMode.name,
                                     color = Color(0xFF888888),
                                     fontSize = 12.sp
                                 )
@@ -273,22 +276,22 @@ fun BottomInputArea(
                                 modifier = Modifier.background(Color(0xFF2D2D2D))
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("计划模式", color = Color.White, fontSize = 12.sp) },
+                                    text = { Text(ChatPattern.计划模式.name, color = Color.White, fontSize = 12.sp) },
                                     onClick = {
-                                        onModeChange("计划模式")
+                                        onModeChange(ChatPattern.计划模式)
                                         modeMenuExpanded = false
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("执行模式", color = Color.White, fontSize = 12.sp) },
+                                    text = { Text(ChatPattern.执行模式.name, color = Color.White, fontSize = 12.sp) },
                                     onClick = {
-                                        onModeChange("执行模式")
+                                        onModeChange(ChatPattern.执行模式)
                                         modeMenuExpanded = false
                                     }
                                 )
                             }
                         }
-
+                        Spacer(modifier = Modifier.width(8.dp))
                         // 模型切换
                         Box {
                             Row(
@@ -337,26 +340,16 @@ fun BottomInputArea(
                                 }
                             }
                         }
-
+                        Spacer(modifier = Modifier.width(8.dp))
                         // 是否携带历史消息
-                        Box {
-                            Row(
-                                modifier = Modifier
-                                    .clickable { }
-                                    .padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(isChecked, onCheckedChange = {
-                                    onLoadHistoryChange(it)
-                                })
-                                Text(
-                                    text = "历史消息",
-                                    color = Color(0xFF888888),
-                                    fontSize = 12.sp
-                                )
-                            }
-
-                        }
+                        Checkbox(isChecked, onCheckedChange = {
+                            onLoadHistoryChange(it)
+                        })
+                        Text(
+                            text = "历史消息",
+                            color = Color(0xFF888888),
+                            fontSize = 12.sp
+                        )
 
                     }
 

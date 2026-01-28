@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.github.bboygf.over_code.enums.ChatPattern
 import com.github.bboygf.over_code.enums.ChatRole
 import com.github.bboygf.over_code.llm.LLMService
 import com.github.bboygf.over_code.po.GeminiFunctionDeclaration
@@ -26,6 +27,7 @@ import kotlinx.coroutines.launch
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import com.github.bboygf.over_code.utils.ImageUtils
+import com.github.bboygf.over_code.utils.Log
 import com.github.bboygf.over_code.utils.ProjectFileUtils
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
@@ -69,7 +71,7 @@ class HomeViewModel(
     var activeModel by mutableStateOf<ModelConfigInfo?>(null)
         private set
 
-    var chatMode by mutableStateOf("计划模式") // "计划模式" 或 "执行模式"
+    var chatMode by mutableStateOf(ChatPattern.计划模式) // "计划模式" 或 "执行模式"
 
     var selectedImageBase64List = mutableStateListOf<String>()
         private set
@@ -212,161 +214,138 @@ class HomeViewModel(
             )
         }.toMutableList()
 
-        // 工具定义 (保持不变)
-        val tools = listOf(
-            GeminiTool(
-                functionDeclarations = listOf(
-                    GeminiFunctionDeclaration(
-                        name = "get_project_info",
-                        description = "读取当前项目的完整文件结构和内容。",
-                        parameters = buildJsonObject {
-                            put("type", "object")
-                            put("properties", buildJsonObject {})
+        // 工具定义
+        val tools = mutableListOf(
+            GeminiFunctionDeclaration(
+                name = "get_project_info",
+                description = "读取当前项目的完整文件结构和内容。",
+                parameters = buildJsonObject {
+                    put("type", "object")
+                    put("properties", buildJsonObject {})
+                }
+            ),
+            GeminiFunctionDeclaration(
+                name = "read_file_content",
+                description = "文件内容字符串，如果文件不存在则返回 null",
+                parameters = buildJsonObject {
+                    put("type", "object")
+                    put("properties", buildJsonObject {
+                        putJsonObject("absolutePath") {
+                            put("type", "string")
+                            put("description", "文件的绝对路径")
                         }
-                    ),
-                    GeminiFunctionDeclaration(
-                        name = "create_file_or_dir",
-                        description = "根据文件绝对路径创建文件或者目录",
-                        parameters = buildJsonObject {
-                            put("type", "object")
-                            put("properties", buildJsonObject {
-                                putJsonObject("absolutePath") {
-                                    put("type", "string")
-                                    put("description", "文件的绝对路径")
-                                }
-                                putJsonObject("isDirectory") {
-                                    put("type", "boolean") // 建议直接用 boolean 类型
-                                    put("description", "是否为目录，true表示目录，false表示文件")
-                                }
-                            })
+                    })
+                }
+            ),
+            GeminiFunctionDeclaration(
+                name = "get_file_fun_info",
+                description = "根据文件获取文件内所有方法详情并返回方法的行号信息",
+                parameters = buildJsonObject {
+                    put("type", "object")
+                    put("properties", buildJsonObject {
+                        putJsonObject("fileName") {
+                            put("type", "string")
+                            put("description", "文件名")
                         }
-                    ),
-                    GeminiFunctionDeclaration(
-                        name = "update_file_content",
-                        description = "根据绝对路径修改文件内容",
-                        parameters = buildJsonObject {
-                            put("type", "object")
-                            put("properties", buildJsonObject {
-                                putJsonObject("absolutePath") {
-                                    put("type", "string")
-                                    put("description", "文件的绝对路径")
-                                }
-                                putJsonObject("newContent") {
-                                    put("type", "string") // 建议直接用 boolean 类型
-                                    put("description", "新内容")
-                                }
-                            })
+                    })
+                }
+            ),
+            GeminiFunctionDeclaration(
+                name = "get_method_detail",
+                description = "根据文件名和方法名获取特定方法的详情及起始终止行号",
+                parameters = buildJsonObject {
+                    put("type", "object")
+                    put("properties", buildJsonObject {
+                        putJsonObject("fileName") {
+                            put("type", "string")
+                            put("description", "文件名")
                         }
-                    ),
-                    GeminiFunctionDeclaration(
-                        name = "read_file_content",
-                        description = "文件内容字符串，如果文件不存在则返回 null",
-                        parameters = buildJsonObject {
-                            put("type", "object")
-                            put("properties", buildJsonObject {
-                                putJsonObject("absolutePath") {
-                                    put("type", "string")
-                                    put("description", "文件的绝对路径")
-                                }
-                            })
+                        putJsonObject("methodName") {
+                            put("type", "string") // 建议直接用 boolean 类型
+                            put("description", "要查找的方法名")
                         }
-                    ),
-                    GeminiFunctionDeclaration(
-                        name = "delete_file",
-                        description = "根据绝对路径删除文件或目录",
-                        parameters = buildJsonObject {
-                            put("type", "object")
-                            put("properties", buildJsonObject {
-                                putJsonObject("absolutePath") {
-                                    put("type", "string")
-                                    put("description", "文件的绝对路径")
-                                }
-                            })
-                        }
-                    ),
-                    GeminiFunctionDeclaration(
-                        name = "get_file_fun_info",
-                        description = "根据文件获取文件内所有方法详情",
-                        parameters = buildJsonObject {
-                            put("type", "object")
-                            put("properties", buildJsonObject {
-                                putJsonObject("fileName") {
-                                    put("type", "string")
-                                    put("description", "文件名")
-                                }
-                            })
-                        }
-                    ),
-                    GeminiFunctionDeclaration(
-                        name = "get_method_detail",
-                        description = "根据文件名和方法名获取特定方法的详情及代码位置（index）",
-                        parameters = buildJsonObject {
-                            put("type", "object")
-                            put("properties", buildJsonObject {
-                                putJsonObject("fileName") {
-                                    put("type", "string")
-                                    put("description", "文件名")
-                                }
-                                putJsonObject("methodName") {
-                                    put("type", "string") // 建议直接用 boolean 类型
-                                    put("description", "要查找的方法名")
-                                }
-                            })
-                        }
-                    ),
-//                    GeminiFunctionDeclaration(
-//                        name = "replace_method_content",
-//                        description = "替换指定文件中的方法",
-//                        parameters = buildJsonObject {
-//                            put("type", "object")
-//                            put("properties", buildJsonObject {
-//                                putJsonObject("fileName") {
-//                                    put("type", "string")
-//                                    put("description", "文件名")
-//                                }
-//                                putJsonObject("methodName") {
-//                                    put("type", "string") // 建议直接用 boolean 类型
-//                                    put("description", "要替换的方法名")
-//                                }
-//                                putJsonObject("newMethodCode") {
-//                                    put("type", "string") // 建议直接用 boolean 类型
-//                                    put(
-//                                        "description",
-//                                        "新的方法完整代码字符串 (例如: \"fun hello() { println(\\\"hi\\\") }\")"
-//                                    )
-//                                }
-//                            })
-//                        }
-//                    ),
-                    GeminiFunctionDeclaration(
-                        name = "replace_code_by_offset",
-                        description = "根据字符偏移量（Index）替换文件内容",
-                        parameters = buildJsonObject {
-                            put("type", "object")
-                            put("properties", buildJsonObject {
-                                putJsonObject("fileName") {
-                                    put("type", "string")
-                                    put("description", "文件名")
-                                }
-                                putJsonObject("startOffset") {
-                                    put("type", "integer")
-                                    put("description", "起始偏移量 (method.startOffset)")
-                                }
-                                putJsonObject("endOffset") {
-                                    put("type", "integer")
-                                    put("description", "结束偏移量 (method.endOffset)")
-                                }
-                                putJsonObject("newMethodCode") {
-                                    put("type", "string")
-                                    put("description", "新的代码")
-                                }
-                            })
-                        }
-                    )
-                )
+                    })
+                }
             )
         )
-
+        if (chatMode == ChatPattern.执行模式) {
+            Log.info("执行模式！")
+            val writeTools: List<GeminiFunctionDeclaration> = listOf(
+                GeminiFunctionDeclaration(
+                    name = "create_file_or_dir",
+                    description = "根据文件绝对路径创建文件或者目录",
+                    parameters = buildJsonObject {
+                        put("type", "object")
+                        put("properties", buildJsonObject {
+                            putJsonObject("absolutePath") {
+                                put("type", "string")
+                                put("description", "文件的绝对路径")
+                            }
+                            putJsonObject("isDirectory") {
+                                put("type", "boolean") // 建议直接用 boolean 类型
+                                put("description", "是否为目录，true表示目录，false表示文件")
+                            }
+                        })
+                    }
+                ),
+//                GeminiFunctionDeclaration(
+//                    name = "update_file_content",
+//                    description = "根据绝对路径修改文件内容",
+//                    parameters = buildJsonObject {
+//                        put("type", "object")
+//                        put("properties", buildJsonObject {
+//                            putJsonObject("absolutePath") {
+//                                put("type", "string")
+//                                put("description", "文件的绝对路径")
+//                            }
+//                            putJsonObject("newContent") {
+//                                put("type", "string") // 建议直接用 boolean 类型
+//                                put("description", "新内容")
+//                            }
+//                        })
+//                    }
+//                ),
+                GeminiFunctionDeclaration(
+                    name = "replace_code_by_line",
+                    description = "根据文件名、行号替换文件内容",
+                    parameters = buildJsonObject {
+                        put("type", "object")
+                        put("properties", buildJsonObject {
+                            putJsonObject("fileName") {
+                                put("type", "string")
+                                put("description", "文件名")
+                            }
+                            putJsonObject("startLine") {
+                                put("type", "integer")
+                                put("description", "起始行号 (从 1 开始)")
+                            }
+                            putJsonObject("endLine") {
+                                put("type", "integer")
+                                put("description", "结束行号 (从 1 开始)")
+                            }
+                            putJsonObject("newCodeString") {
+                                put("type", "string")
+                                put("description", "新的代码")
+                            }
+                        })
+                    }
+                ),
+                GeminiFunctionDeclaration(
+                    name = "delete_file",
+                    description = "根据绝对路径删除文件或目录",
+                    parameters = buildJsonObject {
+                        put("type", "object")
+                        put("properties", buildJsonObject {
+                            putJsonObject("absolutePath") {
+                                put("type", "string")
+                                put("description", "文件的绝对路径")
+                            }
+                        })
+                    }
+                ))
+            tools.addAll(writeTools)
+        }
+        val geminiTools = listOf(GeminiTool(tools))
         ioScope.launch {
             // 用于累计最终显示的文本
             val contentBuilder = StringBuilder()
@@ -374,7 +353,7 @@ class HomeViewModel(
             try {
                 processChatTurn(
                     history = llmMessages,
-                    tools = tools,
+                    tools = geminiTools,
                     contentBuilder = contentBuilder,
                     onScrollToBottom = onScrollToBottom
                 )
@@ -456,7 +435,9 @@ class HomeViewModel(
         )
         var contentStr = contentBuilder.toString()
         if (contentStr.isEmpty() && partList.isNotEmpty()) {
-            contentStr = "调用工具\n" + partList.map { geminiPart -> geminiPart.functionCall?.name }.joinToString(",")
+            contentStr =
+                "调用工具\n" + partList.map { geminiPart -> geminiPart.functionCall?.name + " 参数：" + geminiPart.functionCall?.args }
+                    .joinToString("\r")
         }
         val assistantMessage = ChatMessage(
             id = System.currentTimeMillis().toString(),
@@ -505,7 +486,6 @@ class HomeViewModel(
                     val path = args["absolutePath"]?.jsonPrimitive?.content ?: ""
                     val content = args["newContent"]?.jsonPrimitive?.content ?: ""
                     ProjectFileUtils.updateFileContent(project!!, path, content)
-                    "修改成功！"
                 } else if (call.functionCall.name == "read_file_content") {
                     val args = call.functionCall.args
                     // 安全地获取参数
@@ -516,8 +496,8 @@ class HomeViewModel(
                     val args = call.functionCall.args
                     // 安全地获取参数
                     val path = args["absolutePath"]?.jsonPrimitive?.content ?: ""
-                    ProjectFileUtils.deleteFile(project!!, path)
-                    "执行结束"
+                    val deleteFile = ProjectFileUtils.deleteFile(project!!, path)
+                    deleteFile
                 } else if (call.functionCall.name == "get_file_fun_info") {
                     val args = call.functionCall.args
                     // 安全地获取参数
@@ -531,25 +511,15 @@ class HomeViewModel(
                     val methodName = args["methodName"]?.jsonPrimitive?.content ?: ""
                     val result = ProjectFileUtils.getMethodDetail(project!!, fileName, methodName)
                     result
-                }
-//                else if (call.functionCall.name == "replace_method_content") {
-//                    val args = call.functionCall.args
-//                    // 安全地获取参数
-//                    val fileName = args["fileName"]?.jsonPrimitive?.content ?: ""
-//                    val methodName = args["methodName"]?.jsonPrimitive?.content ?: ""
-//                    val newMethodCode = args["newMethodCode"]?.jsonPrimitive?.content ?: ""
-//                    val result = ProjectFileUtils.replaceMethodContent(project!!, fileName, methodName, newMethodCode)
-//                    result
-//                }
-                else if (call.functionCall.name == "replace_code_by_offset") {
+                } else if (call.functionCall.name == "replace_code_by_line") {
                     val args = call.functionCall.args
                     // 安全地获取参数
                     val fileName = args["fileName"]?.jsonPrimitive?.content ?: ""
-                    val startOffset = args["startOffset"]?.jsonPrimitive?.int ?: 0
-                    val endOffset = args["endOffset"]?.jsonPrimitive?.int ?: 0
+                    val startOffset = args["startLine"]?.jsonPrimitive?.int ?: 0
+                    val endOffset = args["endLine"]?.jsonPrimitive?.int ?: 0
                     val newCodeString = args["newCodeString"]?.jsonPrimitive?.content ?: ""
                     val result =
-                        ProjectFileUtils.replaceCodeByOffset(project!!, fileName, startOffset, endOffset, newCodeString)
+                        ProjectFileUtils.replaceCodeByLine(project!!, fileName, startOffset, endOffset, newCodeString)
                     result
                 } else {
                     "Unknown function: ${call.functionCall.name}"
