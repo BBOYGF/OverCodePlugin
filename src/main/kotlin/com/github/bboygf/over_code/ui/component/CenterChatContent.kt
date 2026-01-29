@@ -283,7 +283,38 @@ fun MessageBubble(
                     enter = expandVertically(),
                     exit = shrinkVertically()
                 ) {
-                    contentBody()
+                    // 使用 Row 包裹内容，右侧留出一个专门的折叠感应区
+                    Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            contentBody()
+                        }
+
+                        // 右侧垂直折叠条：贯穿整个内容高度，点击即可收起
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .width(32.dp)
+                                .background(Color.Black.copy(alpha = 0.05f))
+                                .clickable { expanded = false },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowUp,
+                                    contentDescription = "收起",
+                                    tint = Color.Gray.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                // 添加一个垂直的文字提示，让用户知道这里可以点
+                                Text(
+                                    "收起",
+                                    fontSize = 10.sp,
+                                    color = Color.Gray.copy(alpha = 0.6f),
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             } else {
                 contentBody()
