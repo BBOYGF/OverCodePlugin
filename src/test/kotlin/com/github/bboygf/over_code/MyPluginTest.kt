@@ -1,6 +1,7 @@
 package com.github.bboygf.over_code
 
 import com.github.bboygf.over_code.utils.ProjectFileUtils
+import com.github.bboygf.over_code.utils.ProjectFileUtils.findMethodsByName
 import com.github.bboygf.over_code.utils.ProjectFileUtils.getFileFunInfo
 import com.github.bboygf.over_code.utils.ProjectFileUtils.getMethodDetail
 import com.github.bboygf.over_code.utils.ProjectFileUtils.replaceCodeByLine
@@ -85,21 +86,37 @@ class MyPluginTest : BasePlatformTestCase() {
             GlobalSearchScope.projectScope(project)
         )
 
-        val methodDetail = getMethodDetail(project, "ProjectFileUtils.kt", "createFileOrDir")
-        println(methodDetail)
+//        val methodDetail = getMethodDetail(project, "ProjectFileUtils.kt", "createFileOrDir")
+//        println(methodDetail)
 
-//        val replaceMethodContent = replaceMethodContent(
-//            project,
-//            "ProjectFileUtils.kt",
-//            "createFileOrDir",
-//            "fun abc() {\n" +
-//                    "        println(\"Hello, world!\") \n" +
-//                    "    }"
-//        )
-//        println(replaceMethodContent)
-//        val funInfo = getFileFunInfo(project, "ProjectFileUtils.kt")
-//        println(funInfo)
+        val replaceMethodContent = replaceCodeByLine(
+            project,
+            "ProjectFileUtils.kt",
+            18,
+            50,
+            "fun abc() {\n" +
+                    "        println(\"Hello, world!\") \n" +
+                    "    }"
+        )
+        println(replaceMethodContent)
+        val funInfo = getFileFunInfo(project, "ProjectFileUtils.kt")
+        println(funInfo)
     }
+
+    /**
+     * 根据方法名查询文件
+     */
+    fun testFindMethodsByName() {
+        myFixture.copyDirectoryToProject("myClasses", "src")
+        // 1. 获取 VirtualFile 集合 (最新推荐 API)
+        val findMethodsByName = findMethodsByName(project,"findMethodsByName")
+        println(findMethodsByName)
+        val methodDetail = getMethodDetail(project, "ProjectFileUtils.kt", "findMethodsByName")
+        println(methodDetail)
+    }
+
+
+
 
     override fun getTestDataPath() = "src/test/testData"
 

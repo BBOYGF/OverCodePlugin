@@ -266,6 +266,32 @@ class HomeViewModel(
                         }
                     })
                 }
+            ),
+            GeminiFunctionDeclaration(
+                name = "find_methods_by_name",
+                description = "根据方法名在项目中查找其所属的类、文件路径和行号",
+                parameters = buildJsonObject {
+                    put("type", "object")
+                    put("properties", buildJsonObject {
+                        putJsonObject("methodName") {
+                            put("type", "string")
+                            put("description", "方法名")
+                        }
+                    })
+                }
+            ),
+            GeminiFunctionDeclaration(
+                name = "review_code_by_file",
+                description = "检查文件是否有爆红，并直接返回 Markdown 格式的报告",
+                parameters = buildJsonObject {
+                    put("type", "object")
+                    put("properties", buildJsonObject {
+                        putJsonObject("filePath") {
+                            put("type", "string")
+                            put("description", "文件绝对路径")
+                        }
+                    })
+                }
             )
         )
         if (chatMode == ChatPattern.执行模式) {
@@ -288,23 +314,6 @@ class HomeViewModel(
                         })
                     }
                 ),
-//                GeminiFunctionDeclaration(
-//                    name = "update_file_content",
-//                    description = "根据绝对路径修改文件内容",
-//                    parameters = buildJsonObject {
-//                        put("type", "object")
-//                        put("properties", buildJsonObject {
-//                            putJsonObject("absolutePath") {
-//                                put("type", "string")
-//                                put("description", "文件的绝对路径")
-//                            }
-//                            putJsonObject("newContent") {
-//                                put("type", "string") // 建议直接用 boolean 类型
-//                                put("description", "新内容")
-//                            }
-//                        })
-//                    }
-//                ),
                 GeminiFunctionDeclaration(
                     name = "replace_code_by_line",
                     description = "根据文件名、行号替换文件内容",
@@ -326,6 +335,10 @@ class HomeViewModel(
                             putJsonObject("newCodeString") {
                                 put("type", "string")
                                 put("description", "新的代码")
+                            }
+                            putJsonObject("expectedOldContent") {
+                                put("type", "string")
+                                put("description", "可选：AI 预期该行号区间内的旧代码。用于校验行号是否过期")
                             }
                         })
                     }
@@ -518,8 +531,30 @@ class HomeViewModel(
                     val startOffset = args["startLine"]?.jsonPrimitive?.int ?: 0
                     val endOffset = args["endLine"]?.jsonPrimitive?.int ?: 0
                     val newCodeString = args["newCodeString"]?.jsonPrimitive?.content ?: ""
+                    val expectedOldContent = args["expectedOldContent"]?.jsonPrimitive?.content ?: ""
                     val result =
-                        ProjectFileUtils.replaceCodeByLine(project!!, fileName, startOffset, endOffset, newCodeString)
+                        ProjectFileUtils.replaceCodeByLine(
+                            project!!,
+                            fileName,
+                            startOffset,
+                            endOffset,
+                            newCodeString,
+                            expectedOldContent
+                        )
+                    result
+                } else if (call.functionCall.name == "find_methods_by_name") {
+                    val args = call.functionCall.args
+                    // 安全地获取参数
+                    val methodName = args["methodName"]?.jsonPrimitive?.content ?: ""
+                    val result =
+                        ProjectFileUtils.findMethodsByName(project!!, methodName)
+                    result
+                } else if (call.functionCall.name == "review_code_by_file") {
+                    val args = call.functionCall.args
+                    // 安全地获取参数
+                    val filePath = args["filePath"]?.jsonPrimitive?.content ?: ""
+                    val result =
+                        ProjectFileUtils.reviewCodeByFile(project!!, filePath)
                     result
                 } else {
                     "Unknown function: ${call.functionCall.name}"

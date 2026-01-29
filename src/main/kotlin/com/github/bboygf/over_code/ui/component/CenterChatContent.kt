@@ -54,7 +54,7 @@ fun WelcomeScreen() {
                 ),
             contentAlignment = Alignment.Center
         ) {
-            Image(modifier = Modifier.size(70.dp),painter = painterResource("/image/o.png"), contentDescription = "logo")
+            Image(modifier = Modifier.width(70.dp).height(60.dp),painter = painterResource("/image/o.png"), contentDescription = "logo")
         }
 
         Spacer(modifier = Modifier.height(24.dp))

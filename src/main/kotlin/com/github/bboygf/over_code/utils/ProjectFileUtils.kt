@@ -1,13 +1,15 @@
 package com.github.bboygf.over_code.utils
 
+import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx
+import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.editor.Document
 import com.intellij.openapi.fileEditor.FileDocumentManager
-import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.roots.ProjectRootManager
-import com.intellij.openapi.util.Computable
+import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtil
@@ -16,8 +18,8 @@ import com.intellij.psi.*
 import com.intellij.psi.codeStyle.CodeStyleManager
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
-import com.intellij.psi.util.endOffset
-import com.intellij.psi.util.startOffset
+import com.intellij.psi.search.PsiShortNamesCache
+import com.intellij.psi.util.PsiTreeUtil
 import kotlinx.io.IOException
 import java.io.File
 
@@ -64,7 +66,7 @@ object ProjectFileUtils {
         if (fileIndex.isInLibraryClasses(file) || fileIndex.isInLibrarySource(file)) return false
 
         // 3. 基础过滤：排除特定后缀
-        val ignoredExtensions = setOf("class", "jar", "exe", "dll", "pyc", "png", "jpg", "jpeg", "gif")
+        val ignoredExtensions = setOf("class", "jar", "exe", "dll", "pyc", "png", "jpg", "jpeg", "gif", "bmp")
         if (ignoredExtensions.contains(file.extension?.lowercase())) return false
 
         return true
@@ -206,34 +208,20 @@ object ProjectFileUtils {
                                 val startLine = document.getLineNumber(method.textRange.startOffset) + 1
                                 val endLine = document.getLineNumber(method.textRange.endOffset) + 1
                                 stringBuilder.append("行数范围（包括备注）：第 $startLine 行 到 第 $endLine 行\n")
-                            }
 
-                            stringBuilder.append("${method.text}\n")
-                            stringBuilder.append("字符下标：${method.textRange.startOffset} - ${method.textRange.endOffset}\n")
+                                // 将方法内容按行拆分，并添加行号前缀（类似 readFileContent）
+                                val methodLines = method.text.lines()
+                                val methodWithLineNumbers = methodLines.mapIndexed { index, lineText ->
+                                    "${startLine + index} | $lineText"
+                                }.joinToString("\n")
+                                stringBuilder.append(methodWithLineNumbers).append("\n")
+                            } else {
+                                stringBuilder.append("${method.text}\n")
+                            }
                             stringBuilder.append("\n")
                         }
                     }
                 }
-
-                // 特殊处理：Kotlin 顶层函数
-//                if (psiFile is org.jetbrains.kotlin.psi.KtFile) {
-//                    psiFile.declarations.filterIsInstance<org.jetbrains.kotlin.psi.KtNamedFunction>().forEach { ktFunction ->
-//                        if (ktFunction.name == methodName) {
-//                            stringBuilder.append("--- 顶层方法详情 ---\n")
-//
-//                            // 3. 计算并添加行数信息
-//                            if (document != null) {
-//                                val startLine = document.getLineNumber(ktFunction.textRange.startOffset) + 1
-//                                val endLine = document.getLineNumber(ktFunction.textRange.endOffset) + 1
-//                                stringBuilder.append("行数范围：第 $startLine 行 到 第 $endLine 行\n")
-//                            }
-//
-//                            stringBuilder.append("${ktFunction.text}\n")
-//                            stringBuilder.append("字符下标：${ktFunction.textRange.startOffset} - ${ktFunction.textRange.endOffset}\n")
-//                            stringBuilder.append("\n")
-//                        }
-//                    }
-//                }
             }
 
             if (stringBuilder.isEmpty()) "未找到方法: $methodName" else stringBuilder.toString()
@@ -340,88 +328,258 @@ object ProjectFileUtils {
      * @param startLine 起始行号 (从 1 开始)
      * @param endLine 结束行号 (从 1 开始)
      * @param newCodeString 新的代码
+     *  @param expectedOldContent 可选：AI 预期该行号区间内的旧代码。用于校验行号是否过期
      */
     fun replaceCodeByLine(
         project: Project,
         fileName: String,
         startLine: Int,
         endLine: Int,
-        newCodeString: String
+        newCodeString: String,
+        expectedOldContent: String? = null
     ): String {
-        var finalFileName = fileName
-        val file = File(fileName)
-        if (file.exists()) {
-            finalFileName = file.name
+        val targetFiles = mutableListOf<VirtualFile>()
+        val fileByPath = LocalFileSystem.getInstance().findFileByPath(fileName)
+
+        if (fileByPath != null) {
+            targetFiles.add(fileByPath)
+        } else {
+            val shortName = if (fileName.contains("/") || fileName.contains("\\")) File(fileName).name else fileName
+            val foundFiles = runReadAction {
+                FilenameIndex.getVirtualFilesByName(shortName, GlobalSearchScope.projectScope(project))
+            }
+            targetFiles.addAll(foundFiles)
         }
 
-        val virtualFiles = runReadAction {
-            FilenameIndex.getVirtualFilesByName(
-                finalFileName,
-                GlobalSearchScope.projectScope(project)
-            )
-        }
-
-        if (virtualFiles.isEmpty()) {
-            return "失败：未找到文件 $finalFileName"
-        }
+        if (targetFiles.isEmpty()) return "失败：未找到文件 $fileName"
 
         val resultSummary = StringBuilder()
         var successCount = 0
 
-        virtualFiles.forEach { virtualFile ->
-            val fileResult = WriteCommandAction.runWriteCommandAction<String>(project, Computable {
+        WriteCommandAction.runWriteCommandAction(project) {
+            targetFiles.forEach { virtualFile ->
                 try {
                     val document = FileDocumentManager.getInstance().getDocument(virtualFile)
-                        ?: return@Computable "跳过：无法加载文件 [${virtualFile.name}] 的内容"
-
-                    // 1. 行号安全检查及转换 (将 1-based 转换为 0-based)
-                    val totalLines = document.lineCount
-                    if (totalLines == 0) return@Computable "失败：文件为空"
-
-                    // 限制范围在合法行数内 (0 到 lineCount-1)
-                    val sLine = (startLine - 1).coerceIn(0, totalLines - 1)
-                    val eLine = (endLine - 1).coerceIn(0, totalLines - 1)
-
-                    if (sLine > eLine) {
-                        return@Computable "失败：起始行 $startLine 大于结束行 $endLine"
+                    if (document == null) {
+                        resultSummary.append("跳过：无法加载 [${virtualFile.name}]; ")
+                        return@forEach
                     }
 
-                    // 2. 将行号转换为偏移量
-                    // getLineStartOffset: 获取该行第一个字符的下标
-                    // getLineEndOffset: 获取该行最后一个字符（含换行符）的下标
+                    val totalLines = document.lineCount
+                    val textLength = document.textLength
+
+                    // --- 修复：处理空文件 (0字节) 的情况 ---
+                    // 如果文件完全为空，逻辑上我们允许对第 1 行进行“替换”（即插入）
+                    if (textLength == 0) {
+                        if (startLine == 1) {
+                            document.setText(newCodeString) // 直接设置内容
+                            commitAndFormat(project, document, 0, newCodeString.length)
+                            successCount++
+                            resultSummary.append("成功(初始化)：[${virtualFile.name}] (当前总行数: ${document.lineCount}); ")
+                        } else {
+                            resultSummary.append("失败 [${virtualFile.name}]: 空文件只能从第1行开始写入; ")
+                        }
+                        return@forEach
+                    }
+
+                    // --- 严格边界检查 (针对非空文件) ---
+                    if (startLine < 1 || endLine > totalLines || startLine > endLine) {
+                        resultSummary.append("失败 [${virtualFile.name}]: 行号范围越界 (请求: $startLine-$endLine, 文件总行数: $totalLines); ")
+                        return@forEach
+                    }
+
+                    // 计算 Offset
+                    val sLine = startLine - 1
+                    val eLine = endLine - 1
                     val startOffset = document.getLineStartOffset(sLine)
+                    // 注意：getLineEndOffset 包含行尾换行符的逻辑处理
                     val endOffset = document.getLineEndOffset(eLine)
 
-                    // 3. 执行替换
-                    document.replaceString(startOffset, endOffset, newCodeString)
-
-                    // 4. 同步到 PSI 树
-                    val psiDocumentManager = PsiDocumentManager.getInstance(project)
-                    psiDocumentManager.commitDocument(document)
-
-                    // 5. 格式化
-                    val psiFile = psiDocumentManager.getPsiFile(document)
-                    if (psiFile != null) {
-                        CodeStyleManager.getInstance(project).reformatRange(
-                            psiFile,
-                            startOffset,
-                            startOffset + newCodeString.length
-                        )
+                    // --- 内容校验 (乐观锁) ---
+                    if (expectedOldContent != null) {
+                        val actualContent = document.getText(TextRange(startOffset, endOffset))
+                        // 使用 trim() 增加对换行符不一致的容错性
+                        if (actualContent.trim() != expectedOldContent.trim()) {
+                            resultSummary.append("失败 [${virtualFile.name}]: 内容不匹配。预期: [${expectedOldContent.trim()}], 实际: [${actualContent.trim()}]; ")
+                            return@forEach
+                        }
                     }
 
+                    // 执行替换
+                    document.replaceString(startOffset, endOffset, newCodeString)
+
+                    // 提交并格式化
+                    commitAndFormat(project, document, startOffset, startOffset + newCodeString.length)
+
                     successCount++
-                    "成功：已替换 [${virtualFile.name}] 第 $startLine-$endLine 行"
+                    resultSummary.append("成功：[${virtualFile.name}] (当前总行数: ${document.lineCount}); ")
+
                 } catch (e: Exception) {
-                    "异常：[${virtualFile.name}] 处理时错误: ${e.message}"
+                    resultSummary.append("异常 [${virtualFile.name}]: ${e.message}; ")
                 }
-            })
-            resultSummary.append(fileResult).append("; ")
+            }
         }
 
-        return if (successCount > 0) {
-            "修改文件 $finalFileName 成功: $resultSummary"
-        } else {
-            "全部操作失败: $resultSummary"
+        val prefix = if (successCount > 0) "操作完成 ($successCount/${targetFiles.size}): " else "全部失败: "
+        val warning =
+            if (successCount > 0) "\n\n⚠️ 注意：由于文件内容已更改，建议调用 read_file_content 获取最新行号后再进行下一次修改。" else ""
+
+        return "$prefix$resultSummary$warning"
+    }
+
+    /**
+     * 提交文档修改并执行局部代码格式化
+     */
+    private fun commitAndFormat(project: Project, document: Document, startOffset: Int, endOffset: Int) {
+        val psiDocumentManager = PsiDocumentManager.getInstance(project)
+        psiDocumentManager.commitDocument(document)
+        val psiFile = psiDocumentManager.getPsiFile(document)
+        if (psiFile != null) {
+            CodeStyleManager.getInstance(project).reformatRange(psiFile, startOffset, endOffset)
+        }
+        // 强制保存到磁盘，确保后续 read_file_content 能读到最新内容
+        FileDocumentManager.getInstance().saveDocument(document)
+    }
+
+    /**
+     * 根据方法名在项目中查找其所属的类、文件路径和行号。
+     * @param project 项目对象
+     * @param methodName 方法名
+     * @return Markdown 格式的查找结果
+     */
+    fun findMethodsByName(project: Project, methodName: String): String {
+        return runReadAction {
+            val scope = GlobalSearchScope.projectScope(project)
+            val methods = PsiShortNamesCache.getInstance(project).getMethodsByName(methodName, scope)
+
+            if (methods.isEmpty()) {
+                return@runReadAction "未在项目中找到名为 `$methodName` 的方法。"
+            }
+
+            val sb = StringBuilder()
+            sb.append("### 查找结果: `$methodName` \n\n")
+            sb.append("| 类名 | 文件名 | 绝对路径 | 行号 |\n")
+            sb.append("| :--- | :--- | :--- | :--- |\n")
+
+            methods.forEach { method ->
+                val psiClass = method.containingClass
+                val psiFile = method.containingFile
+                val virtualFile = psiFile.virtualFile
+                val document = PsiDocumentManager.getInstance(project).getDocument(psiFile)
+                val lineNumber = document?.getLineNumber(method.textOffset)?.plus(1) ?: -1
+
+                val className = psiClass?.qualifiedName ?: "顶层函数"
+                val fileName = virtualFile.name
+                val filePath = virtualFile.path
+
+                sb.append("| $className | $fileName | $filePath | $lineNumber |\n")
+            }
+
+            sb.toString()
+        }
+    }
+
+
+    /**
+     * 内部简单数据类，用于暂存错误信息以便排序
+     */
+    private data class TempErrorInfo(
+        val line: Int,
+        val type: String,   // "语法错误" 或 "语义错误"
+        val message: String,
+        val codeContent: String
+    )
+
+    /**
+     * 检查文件是否有爆红，并直接返回 Markdown 格式的报告
+     *
+     * @param project 当前项目
+     * @param filePath 文件绝对路径
+     * @return Markdown 格式的字符串报告
+     */
+    fun reviewCodeByFile(project: Project, filePath: String): String {
+        return runReadAction {
+            val sb = StringBuilder()
+            val virtualFile = LocalFileSystem.getInstance().findFileByPath(filePath)
+
+            if (virtualFile == null || !virtualFile.exists()) {
+                return@runReadAction "### ❌ 文件未找到\n路径: `$filePath`"
+            }
+
+            val fileTitle = virtualFile.name
+            val psiFile = PsiManager.getInstance(project).findFile(virtualFile)
+            val document = psiFile?.let { PsiDocumentManager.getInstance(project).getDocument(it) }
+
+            if (psiFile == null || document == null) {
+                return@runReadAction "### ❌ 无法解析文件内容: $fileTitle"
+            }
+
+            val errorList = mutableListOf<TempErrorInfo>()
+
+            // 1. 检查语法错误 (PsiErrorElement) - 最直接的红线
+            PsiTreeUtil.collectElementsOfType(psiFile, PsiErrorElement::class.java).forEach { error ->
+                val line = document.getLineNumber(error.textOffset) + 1
+                errorList.add(
+                    TempErrorInfo(
+                        line = line,
+                        type = "Syntax Error",
+                        message = error.errorDescription,
+                        codeContent = error.text.replace("\n", " ").replace("|", "\\|")
+                    )
+                )
+            }
+
+            // 2. 检查语义错误 (使用通用的 processHighlights 方法)
+            // 该方法会遍历文档中已经生成的高亮信息
+            DaemonCodeAnalyzerEx.processHighlights(
+                document,
+                project,
+                HighlightSeverity.ERROR, // 只获取 ERROR 级别
+                0,
+                document.textLength
+            ) { info ->
+                val line = document.getLineNumber(info.startOffset) + 1
+                val content = document.getText(TextRange(info.startOffset, info.endOffset))
+                    .replace("\n", " ")
+                    .replace("|", "\\|")
+
+                val msg = (info.description ?: "Unknown Error").replace("|", "\\|")
+
+                // 去重逻辑：如果同一个位置已经有了语法错误，就不再重复添加语义错误
+                if (errorList.none { it.line == line && it.message == msg }) {
+                    errorList.add(
+                        TempErrorInfo(
+                            line = line,
+                            type = "Semantic Error",
+                            message = msg,
+                            codeContent = content
+                        )
+                    )
+                    true // 继续处理下一个
+                } else true
+            }
+
+            // 3. 构造 MD 字符串
+            if (errorList.isEmpty()) {
+                sb.append("### ✅ 代码检查通过: $fileTitle\n\n")
+                sb.append("- 路径: `$filePath`\n")
+                sb.append("- 结果: 未发现任何报错 (ERROR)。\n")
+            } else {
+                sb.append("### 🔴 代码发现爆红: $fileTitle\n\n")
+                sb.append("- 路径: `$filePath`\n")
+                sb.append("- 错误总数: **${errorList.size}**\n\n")
+                sb.append("| 行号 | 类型 | 错误描述 | 问题代码 |\n")
+                sb.append("| :--- | :--- | :--- | :--- |\n")
+
+                errorList.sortedBy { it.line }.forEach { err ->
+                    val cleanCode =
+                        if (err.codeContent.length > 50) err.codeContent.take(50) + "..." else err.codeContent
+                    sb.append("| ${err.line} | ${err.type} | ${err.message} | `${cleanCode.ifBlank { "N/A" }}` |\n")
+                }
+            }
+
+            sb.toString()
         }
     }
 }
+
