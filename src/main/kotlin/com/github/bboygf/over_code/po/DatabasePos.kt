@@ -15,6 +15,7 @@ object ChatMessages : IntIdTable("chat_messages") {
     val chatRole = enumerationByName("chat_role", 20, ChatRole::class)
     val timestamp = long("timestamp")
     val sessionId = varchar("session_id", 50).default("default")
+    val thought = text("thought").nullable()
 }
 
 /**

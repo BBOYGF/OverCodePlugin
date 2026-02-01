@@ -110,57 +110,48 @@ object ProjectFileUtils {
     /**
      * 根据文件获取文件内所有方法详情（返回行号信息）
      * @param project 项目
-     * @param fileName 文件名
+     * @param filePath 文件名
      */
-    fun getFileFunInfo(project: Project, fileName: String): String {
-        var finalFileName = fileName
-        val file = File(fileName)
-        if (file.exists() && file.isFile) {
-            finalFileName = file.name
-        }
+    fun getFileFunInfo(project: Project, filePath: String): String {
+        val virtualFile = LocalFileSystem.getInstance().findFileByPath(filePath)
+            ?: return "### ❌ 失败：未找到文件\n路径: `$filePath`"
 
         return runReadAction {
-            val virtualFiles = FilenameIndex.getVirtualFilesByName(
-                finalFileName,
-                GlobalSearchScope.projectScope(project)
-            )
-
             val stringBuilder = StringBuilder()
             val psiManager = PsiManager.getInstance(project)
             val documentManager = PsiDocumentManager.getInstance(project) // 1. 获取文档管理器
 
-            virtualFiles.forEach { virtualFile ->
-                val psiFile = psiManager.findFile(virtualFile) ?: return@forEach
-                val document = documentManager.getDocument(psiFile) // 2. 获取该文件的 Document 对象
+            val psiFile = psiManager.findFile(virtualFile) ?: return@runReadAction "文件路径不存在$filePath 请重试！"
+            val document = documentManager.getDocument(psiFile) // 2. 获取该文件的 Document 对象
 
-                if (psiFile is PsiClassOwner) {
-                    val classes = psiFile.classes
-                    classes.forEach { psiClass ->
-                        val methods = psiClass.methods
-                        methods.forEach { method ->
-                            if (method.isConstructor) return@forEach
+            if (psiFile is PsiClassOwner) {
+                val classes = psiFile.classes
+                classes.forEach { psiClass ->
+                    val methods = psiClass.methods
+                    methods.forEach { method ->
+                        if (method.isConstructor) return@forEach
 
-                            val commentText = method.navigationElement.let { original ->
-                                if (original is PsiDocCommentOwner) original.docComment?.text else null
-                            }
-
-                            // 3. 计算行号
-                            val lineInfo = if (document != null) {
-                                val startLine = document.getLineNumber(method.textRange.startOffset) + 1
-                                val endLine = document.getLineNumber(method.textRange.endOffset) + 1
-                                "第 $startLine 行 - 第 $endLine 行"
-                            } else {
-                                "无法获取行号"
-                            }
-
-                            stringBuilder.append("备注：${commentText?.trim() ?: "无"}\r\n")
-                            stringBuilder.append("方法名：${method.name}\r\n")
-                            stringBuilder.append("参数：${method.parameterList.text}\r\n")
-                            stringBuilder.append("方法范围：$lineInfo\r\n")
-                            stringBuilder.append("--------------------------\r\n")
+                        val commentText = method.navigationElement.let { original ->
+                            if (original is PsiDocCommentOwner) original.docComment?.text else null
                         }
+
+                        // 3. 计算行号
+                        val lineInfo = if (document != null) {
+                            val startLine = document.getLineNumber(method.textRange.startOffset) + 1
+                            val endLine = document.getLineNumber(method.textRange.endOffset) + 1
+                            "第 $startLine 行 - 第 $endLine 行"
+                        } else {
+                            "无法获取行号"
+                        }
+
+                        stringBuilder.append("备注：${commentText?.trim() ?: "无"}\r\n")
+                        stringBuilder.append("方法名：${method.name}\r\n")
+                        stringBuilder.append("参数：${method.parameterList.text}\r\n")
+                        stringBuilder.append("方法范围：$lineInfo\r\n")
+                        stringBuilder.append("--------------------------\r\n")
                     }
                 }
+
             }
             if (stringBuilder.isEmpty()) "未找到相关方法" else stringBuilder.toString()
         }
@@ -169,57 +160,47 @@ object ProjectFileUtils {
     /**
      * 根据文件名和方法名获取特定方法的详情
      * @param project 项目对象
-     * @param fileName 文件名 (如 "TestService.kt")
+     * @param filePath 文件的绝对路径
      * @param methodName 要查找的方法名
      */
-    fun getMethodDetail(project: Project, fileName: String, methodName: String): String {
-        var finalFileName = fileName
-        val file = File(fileName)
-        if (file.exists() && file.isFile) {
-            finalFileName = file.name
-        }
+    fun getMethodDetail(project: Project, filePath: String, methodName: String): String {
 
+        val virtualFile = LocalFileSystem.getInstance().findFileByPath(filePath)
+            ?: return "### ❌ 失败：未找到文件\n路径: `$filePath`"
         return runReadAction {
-            val virtualFiles = FilenameIndex.getVirtualFilesByName(
-                finalFileName,
-                GlobalSearchScope.projectScope(project)
-            )
 
             val stringBuilder = StringBuilder()
             val psiManager = PsiManager.getInstance(project)
             val documentManager = PsiDocumentManager.getInstance(project) // 1. 获取 Document 管理器
+            val psiFile = psiManager.findFile(virtualFile) ?: return@runReadAction "文件路径不存在：$filePath 请重试！"
+            val document = documentManager.getDocument(psiFile) // 2. 获取文件的 Document 对象
 
-            virtualFiles.forEach { virtualFile ->
-                val psiFile = psiManager.findFile(virtualFile) ?: return@forEach
-                val document = documentManager.getDocument(psiFile) // 2. 获取文件的 Document 对象
+            // 处理包含类定义的文件 (Java 或 Kotlin 类)
+            if (psiFile is PsiClassOwner) {
+                psiFile.classes.forEach { psiClass ->
+                    val methods = psiClass.findMethodsByName(methodName, false)
+                    methods.forEach { method ->
+                        if (method.isConstructor) return@forEach
 
-                // 处理包含类定义的文件 (Java 或 Kotlin 类)
-                if (psiFile is PsiClassOwner) {
-                    psiFile.classes.forEach { psiClass ->
-                        val methods = psiClass.findMethodsByName(methodName, false)
-                        methods.forEach { method ->
-                            if (method.isConstructor) return@forEach
+                        stringBuilder.append("--- 方法详情 ---\n")
+                        stringBuilder.append("所属类：${psiClass.qualifiedName}\n")
 
-                            stringBuilder.append("--- 方法详情 ---\n")
-                            stringBuilder.append("所属类：${psiClass.qualifiedName}\n")
+                        // 3. 计算并添加行数信息
+                        if (document != null) {
+                            val startLine = document.getLineNumber(method.textRange.startOffset) + 1
+                            val endLine = document.getLineNumber(method.textRange.endOffset) + 1
+                            stringBuilder.append("行数范围（包括备注）：第 $startLine 行 到 第 $endLine 行\n")
 
-                            // 3. 计算并添加行数信息
-                            if (document != null) {
-                                val startLine = document.getLineNumber(method.textRange.startOffset) + 1
-                                val endLine = document.getLineNumber(method.textRange.endOffset) + 1
-                                stringBuilder.append("行数范围（包括备注）：第 $startLine 行 到 第 $endLine 行\n")
-
-                                // 将方法内容按行拆分，并添加行号前缀（类似 readFileContent）
-                                val methodLines = method.text.lines()
-                                val methodWithLineNumbers = methodLines.mapIndexed { index, lineText ->
-                                    "${startLine + index} | $lineText"
-                                }.joinToString("\n")
-                                stringBuilder.append(methodWithLineNumbers).append("\n")
-                            } else {
-                                stringBuilder.append("${method.text}\n")
-                            }
-                            stringBuilder.append("\n")
+                            // 将方法内容按行拆分，并添加行号前缀（类似 readFileContent）
+                            val methodLines = method.text.lines()
+                            val methodWithLineNumbers = methodLines.mapIndexed { index, lineText ->
+                                "${startLine + index} | $lineText"
+                            }.joinToString("\n")
+                            stringBuilder.append(methodWithLineNumbers).append("\n")
+                        } else {
+                            stringBuilder.append("${method.text}\n")
                         }
+                        stringBuilder.append("\n")
                     }
                 }
             }
@@ -294,137 +275,79 @@ object ProjectFileUtils {
 
 
     /**
-     * 3. 根据绝对路径修改文件内容
-     *
-     * @param project 当前项目
-     * @param absolutePath 文件的绝对路径
-     * @param newContent 要写入的新文本内容
-     */
-    fun updateFileContent(project: Project, absolutePath: String, newContent: String): String {
-        val path = FileUtil.toSystemIndependentName(absolutePath)
-        val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByPath(path)
-
-        if (virtualFile == null || virtualFile.isDirectory) {
-            println("File not found or is a directory: $absolutePath")
-            return "文件不存在，或者是目录"
-        }
-
-        return WriteCommandAction.runWriteCommandAction<String>(project) {
-            try {
-                // VfsUtil.saveText 处理了编码和换行符问题
-                VfsUtil.saveText(virtualFile, newContent)
-                "修改成功！"
-            } catch (e: IOException) {
-                Log.error("根据绝对路径修改文件内容产生异常", e)
-                "修改失败：${e.message}"
-            }
-        }
-    }
-
-    /**
      * 根据行号替换文件内容
      * @param project 项目
-     * @param fileName 文件名
+     * @param filePath 文件绝对路径
      * @param startLine 起始行号 (从 1 开始)
      * @param endLine 结束行号 (从 1 开始)
      * @param newCodeString 新的代码
-     *  @param expectedOldContent 可选：AI 预期该行号区间内的旧代码。用于校验行号是否过期
      */
     fun replaceCodeByLine(
         project: Project,
-        fileName: String,
+        filePath: String,
         startLine: Int,
         endLine: Int,
-        newCodeString: String,
-        expectedOldContent: String? = null
+        newCodeString: String
     ): String {
-        val targetFiles = mutableListOf<VirtualFile>()
-        val fileByPath = LocalFileSystem.getInstance().findFileByPath(fileName)
+        // 1. 通过绝对路径加载 VirtualFile
+        val virtualFile = LocalFileSystem.getInstance().findFileByPath(filePath)
+            ?: return "### ❌ 失败：未找到文件\n路径: `$filePath`"
 
-        if (fileByPath != null) {
-            targetFiles.add(fileByPath)
-        } else {
-            val shortName = if (fileName.contains("/") || fileName.contains("\\")) File(fileName).name else fileName
-            val foundFiles = runReadAction {
-                FilenameIndex.getVirtualFilesByName(shortName, GlobalSearchScope.projectScope(project))
-            }
-            targetFiles.addAll(foundFiles)
-        }
+        // 2. 自动定位该文件所属的项目
+        var resultMessage = ""
 
-        if (targetFiles.isEmpty()) return "失败：未找到文件 $fileName"
-
-        val resultSummary = StringBuilder()
-        var successCount = 0
-
+        // 3. 在写入操作中执行修改
         WriteCommandAction.runWriteCommandAction(project) {
-            targetFiles.forEach { virtualFile ->
-                try {
-                    val document = FileDocumentManager.getInstance().getDocument(virtualFile)
-                    if (document == null) {
-                        resultSummary.append("跳过：无法加载 [${virtualFile.name}]; ")
-                        return@forEach
-                    }
-
-                    val totalLines = document.lineCount
-                    val textLength = document.textLength
-
-                    // --- 修复：处理空文件 (0字节) 的情况 ---
-                    // 如果文件完全为空，逻辑上我们允许对第 1 行进行“替换”（即插入）
-                    if (textLength == 0) {
-                        if (startLine == 1) {
-                            document.setText(newCodeString) // 直接设置内容
-                            commitAndFormat(project, document, 0, newCodeString.length)
-                            successCount++
-                            resultSummary.append("成功(初始化)：[${virtualFile.name}] (当前总行数: ${document.lineCount}); ")
-                        } else {
-                            resultSummary.append("失败 [${virtualFile.name}]: 空文件只能从第1行开始写入; ")
-                        }
-                        return@forEach
-                    }
-
-                    // --- 严格边界检查 (针对非空文件) ---
-                    if (startLine < 1 || endLine > totalLines || startLine > endLine) {
-                        resultSummary.append("失败 [${virtualFile.name}]: 行号范围越界 (请求: $startLine-$endLine, 文件总行数: $totalLines); ")
-                        return@forEach
-                    }
-
-                    // 计算 Offset
-                    val sLine = startLine - 1
-                    val eLine = endLine - 1
-                    val startOffset = document.getLineStartOffset(sLine)
-                    // 注意：getLineEndOffset 包含行尾换行符的逻辑处理
-                    val endOffset = document.getLineEndOffset(eLine)
-
-                    // --- 内容校验 (乐观锁) ---
-                    if (expectedOldContent != null) {
-                        val actualContent = document.getText(TextRange(startOffset, endOffset))
-                        // 使用 trim() 增加对换行符不一致的容错性
-                        if (actualContent.trim() != expectedOldContent.trim()) {
-                            resultSummary.append("失败 [${virtualFile.name}]: 内容不匹配。预期: [${expectedOldContent.trim()}], 实际: [${actualContent.trim()}]; ")
-                            return@forEach
-                        }
-                    }
-
-                    // 执行替换
-                    document.replaceString(startOffset, endOffset, newCodeString)
-
-                    // 提交并格式化
-                    commitAndFormat(project, document, startOffset, startOffset + newCodeString.length)
-
-                    successCount++
-                    resultSummary.append("成功：[${virtualFile.name}] (当前总行数: ${document.lineCount}); ")
-
-                } catch (e: Exception) {
-                    resultSummary.append("异常 [${virtualFile.name}]: ${e.message}; ")
+            try {
+                val document = FileDocumentManager.getInstance().getDocument(virtualFile)
+                if (document == null) {
+                    resultMessage = "### ❌ 失败：无法加载文件文档内容 [${virtualFile.name}]"
+                    return@runWriteCommandAction
                 }
+
+                val totalLines = document.lineCount
+                val textLength = document.textLength
+
+                // --- 情况 A: 处理空文件 ---
+                if (textLength == 0) {
+                    if (startLine == 1) {
+                        document.setText(newCodeString)
+                        commitAndFormat(project, document, 0, newCodeString.length)
+                        resultMessage = "### ✅ 成功：文件初始化成功 [${virtualFile.name}]"
+                    } else {
+                        resultMessage = "### ❌ 失败：空文件必须从第 1 行开始写入"
+                    }
+                    return@runWriteCommandAction
+                }
+
+                // --- 情况 B: 严格边界检查 ---
+                if (startLine < 1 || endLine > totalLines || startLine > endLine) {
+                    resultMessage = "### ❌ 失败：行号越界\n请求范围: $startLine-$endLine, 当前总行数: $totalLines"
+                    return@runWriteCommandAction
+                }
+                // 4. 计算 Offset (IDE 内部 offset 从 0 开始)
+                val sLine = startLine - 1
+                val eLine = endLine - 1
+                val startOffset = document.getLineStartOffset(sLine)
+                val endOffset = document.getLineEndOffset(eLine)
+
+                // 6. 执行替换
+                document.replaceString(startOffset, endOffset, newCodeString)
+
+                // 7. 提交更改并触发格式化（假设已有 commitAndFormat 工具方法）
+                commitAndFormat(project, document, startOffset, startOffset + newCodeString.length)
+
+                resultMessage = "### ✅ 成功：已更新文件 [${virtualFile.name}]\n" +
+                        "- 修改范围: 行 $startLine 到 $endLine\n" +
+                        "- 当前总行数: ${document.lineCount}\n" +
+                        "\n⚠️ 注意：建议重新调用读取接口获取最新行号。"
+
+            } catch (e: Exception) {
+                resultMessage = "### 💥 异常：修改过程中发生错误\n内容: ${e.message}"
             }
         }
 
-        val prefix = if (successCount > 0) "操作完成 ($successCount/${targetFiles.size}): " else "全部失败: "
-        val warning =
-            if (successCount > 0) "\n\n⚠️ 注意：由于文件内容已更改，建议调用 read_file_content 获取最新行号后再进行下一次修改。" else ""
-
-        return "$prefix$resultSummary$warning"
+        return resultMessage
     }
 
     /**
@@ -498,14 +421,11 @@ object ProjectFileUtils {
      * @return Markdown 格式的字符串报告
      */
     fun reviewCodeByFile(project: Project, filePath: String): String {
+        val virtualFile = LocalFileSystem.getInstance().findFileByPath(filePath)
+            ?: return "### ❌ 文件未找到\n路径: `$filePath`"
+
         return runReadAction {
             val sb = StringBuilder()
-            val virtualFile = LocalFileSystem.getInstance().findFileByPath(filePath)
-
-            if (virtualFile == null || !virtualFile.exists()) {
-                return@runReadAction "### ❌ 文件未找到\n路径: `$filePath`"
-            }
-
             val fileTitle = virtualFile.name
             val psiFile = PsiManager.getInstance(project).findFile(virtualFile)
             val document = psiFile?.let { PsiDocumentManager.getInstance(project).getDocument(it) }

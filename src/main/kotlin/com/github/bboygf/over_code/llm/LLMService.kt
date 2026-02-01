@@ -144,12 +144,13 @@ class LLMService(private val project: Project) {
         messages: List<LLMMessage>,
         onChunk: (String) -> Unit,
         onToolCall: ((GeminiPart) -> Unit)?,
-        tools: List<GeminiTool>?
+        tools: List<GeminiTool>?,
+        onThought: ((String) -> Unit)? = null
     ) {
         val provider = getProvider()
             ?: throw LLMException("未配置模型，请先在设置中配置并激活一个模型")
 
-        provider.chatStream(messages, onChunk, onToolCall,tools)
+        provider.chatStream(messages, onChunk, onToolCall, tools, onThought)
     }
 
     companion object {

@@ -144,6 +144,67 @@ fun MessageBubble(
         shape = RoundedCornerShape(8.dp)
     ) {
         Column(Modifier.fillMaxWidth()) {
+            // 新增：思考内容显示区域
+            if (message.thought != null) {
+                var thoughtExpanded by remember { mutableStateOf(false) }
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF2D2D2D)
+                    ),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Column {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { thoughtExpanded = !thoughtExpanded }
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (thoughtExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = "展开/收起",
+                                tint = Color(0xFFFFA726),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "思考",
+                                tint = Color(0xFFFFA726),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = "推理过程",
+                                color = Color(0xFFFFA726),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        if (thoughtExpanded) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 12.dp, end = 12.dp, bottom = 8.dp)
+                            ) {
+                                SelectionContainer {
+                                    Text(
+                                        text = message.thought,
+                                        color = Color(0xFFAAAAAA),
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // 头部信息 - 如果是工具，点击整行可折叠
             Box(
                 modifier = Modifier

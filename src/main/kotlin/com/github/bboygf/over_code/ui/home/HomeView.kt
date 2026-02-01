@@ -315,7 +315,9 @@ fun OverCodeChatUI(project: Project? = null) {
                         viewModel.addImage(base64)
                     }
                 },
-                addProjectIndex = { viewModel.addProjectIndex() }
+                addProjectIndex = { viewModel.addProjectIndex() },
+                isCancelling = viewModel.isCancelling,
+                onCancel = { viewModel.cancelCurrentRequest() }
             )
 
         }

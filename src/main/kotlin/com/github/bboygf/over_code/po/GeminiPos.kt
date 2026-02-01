@@ -2,15 +2,14 @@ package com.github.bboygf.over_code.po
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 @Serializable
 data class GeminiRequest(
     val contents: List<GeminiContent>,
-    val generationConfig: GeminiConfig? = null,
-
+    val generationConfig: GeminiGenerationConfig? = null,
     val tools: List<GeminiTool>? = null,
-    // 可选: 用于控制工具模式 (如 ANY, AUTO, NONE)
     val toolConfig: GeminiToolConfig? = null
 )
 
@@ -49,9 +48,22 @@ data class GeminiConfig(
 )
 
 @Serializable
+data class GeminiThinkingConfig(
+    @SerialName("include_thoughts")
+    val includeThoughts: Boolean = true
+)
+
+@Serializable
+data class GeminiGenerationConfig(
+    val thinkingConfig: GeminiThinkingConfig? = null,
+    val temperature: Double? = null,
+    val maxOutputTokens: Int? = null
+)
+
+@Serializable
 data class GeminiContent(
-    val role: String, // "user" or "model"
-    val parts: List<GeminiPart>
+    val role: String? = null, // "user" or "model"
+    val parts: List<GeminiPart>? = null
 )
 
 @Serializable
@@ -59,10 +71,9 @@ data class GeminiPart(
     val text: String? = null,
     @SerialName("inline_data")
     val inlineData: GeminiBlob? = null,
-    // 新增: 模型返回的函数调用请求
     val functionCall: GeminiFunctionCall? = null,
+    val thought: JsonElement? = null,
     val thoughtSignature: String? = null,
-    // 新增: 我们发送给模型的函数执行结果
     val functionResponse: GeminiFunctionResponse? = null
 )
 
@@ -89,12 +100,44 @@ data class GeminiBlob(
 
 @Serializable
 data class GeminiResponse(
-    val candidates: List<GeminiCandidate>? = null
+    val candidates: List<GeminiCandidate>? = null,
+    val usageMetadata: GeminiUsageMetadata? = null,
+    val modelVersion: String? = null,
+    val responseId: String? = null
+)
+
+@Serializable
+data class GeminiUsageMetadata(
+    @SerialName("promptTokenCount")
+    val promptTokenCount: Int? = null,
+    @SerialName("candidatesTokenCount")
+    val candidatesTokenCount: Int? = null,
+    @SerialName("totalTokenCount")
+    val totalTokenCount: Int? = null,
+    @SerialName("promptTokensDetails")
+    val promptTokensDetails: List<GeminiTokenDetails>? = null,
+    @SerialName("thoughtsTokenCount")
+    val thoughtsTokenCount: Int? = null
+)
+
+@Serializable
+data class GeminiTokenDetails(
+    val modality: String? = null,
+    @SerialName("tokenCount")
+    val tokenCount: Int? = null
 )
 
 @Serializable
 data class GeminiCandidate(
     val content: GeminiContent? = null,
     val finishReason: String? = null,
-    val index: Int? = null
+    val index: Int? = null,
+    @SerialName("safetyRatings")
+    val safetyRatings: List<GeminiSafetyRating>? = null
+)
+
+@Serializable
+data class GeminiSafetyRating(
+    val category: String? = null,
+    val probability: String? = null
 )

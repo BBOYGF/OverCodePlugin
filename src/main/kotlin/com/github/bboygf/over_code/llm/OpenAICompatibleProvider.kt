@@ -145,13 +145,14 @@ class OpenAICompatibleProvider(
         }
     }
 
-    /**
-     * 流式聊天 - 逐字输出
-     */
-    override suspend fun chatStream(
-        messages: List<LLMMessage>, onChunk: (String) -> Unit, onToolCall: ((GeminiPart) -> Unit)?,
-        tools: List<GeminiTool>?
-    ) {
+     /**
+      * 流式聊天 - 逐字输出
+      */
+     override suspend fun chatStream(
+         messages: List<LLMMessage>, onChunk: (String) -> Unit, onToolCall: ((GeminiPart) -> Unit)?,
+         tools: List<GeminiTool>?,
+         onThoughtSignature: ((String) -> Unit)?
+     ) {
         withContext(Dispatchers.IO) {
             val messageDtos = messages.map { msg ->
                 if (msg.images.isEmpty()) {

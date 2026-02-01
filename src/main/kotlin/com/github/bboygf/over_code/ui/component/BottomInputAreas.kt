@@ -60,6 +60,8 @@ fun BottomInputArea(
     onPasteImage: () -> Boolean = { false },
     onSelectImage: () -> Unit = {},
     addProjectIndex: () -> Unit = {},
+    isCancelling: Boolean = false,
+    onCancel: () -> Unit = {},
 ) {
 
     var modeMenuExpanded by remember { mutableStateOf(false) }
@@ -353,28 +355,36 @@ fun BottomInputArea(
 
                     }
 
-                    // 发送按钮
-                    IconButton(
-                        onClick = onSend,
-                        modifier = Modifier.size(32.dp),
-                        enabled = (inputText.text.isNotBlank() || selectedImageBase64List != null) && !isLoading
-
-                    ) {
+                    // 发送和停止按钮
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // 圆形精度条（加载时显示）
                         if (isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                                color = Color(0xFF4A9D5F)
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clickable { onCancel() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = Color(0xFF4A9D5F),
+                                    strokeWidth = 2.dp
+                                )
+                            }
                         } else {
-                            Icon(
-                                imageVector = Icons.Default.ArrowForward,
-                                contentDescription = "Send",
-                                tint = if (inputText.text.isNotBlank() || selectedImageBase64List != null) Color(
-                                    0xFFBBBBBB
-                                ) else Color(0xFF444444)
-
-                            )
+                            // 发送按钮
+                            IconButton(
+                                onClick = onSend,
+                                modifier = Modifier.size(32.dp),
+                                enabled = !isLoading && (inputText.text.isNotBlank() || selectedImageBase64List != null)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowForward,
+                                    contentDescription = "发送",
+                                    tint = if (inputText.text.isNotBlank() || selectedImageBase64List != null)
+                                        Color(0xFFBBBBBB) else Color(0xFF444444)
+                                )
+                            }
                         }
                     }
                 }

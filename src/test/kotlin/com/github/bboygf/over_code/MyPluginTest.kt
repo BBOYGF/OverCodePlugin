@@ -91,15 +91,15 @@ class MyPluginTest : BasePlatformTestCase() {
 
         val replaceMethodContent = replaceCodeByLine(
             project,
-            "ProjectFileUtils.kt",
-            18,
+            "E:\\JavaProject\\OverCode\\src\\test\\testData\\myClasses\\ProjectFileUtils.kt",
+            14,
             50,
             "fun abc() {\n" +
                     "        println(\"Hello, world!\") \n" +
                     "    }"
         )
         println(replaceMethodContent)
-        val funInfo = getFileFunInfo(project, "ProjectFileUtils.kt")
+        val funInfo = getFileFunInfo(project, "E:\\JavaProject\\OverCode\\src\\test\\testData\\myClasses\\ProjectFileUtils.kt")
         println(funInfo)
     }
 
@@ -109,13 +109,11 @@ class MyPluginTest : BasePlatformTestCase() {
     fun testFindMethodsByName() {
         myFixture.copyDirectoryToProject("myClasses", "src")
         // 1. 获取 VirtualFile 集合 (最新推荐 API)
-        val findMethodsByName = findMethodsByName(project,"findMethodsByName")
+        val findMethodsByName = findMethodsByName(project, "findMethodsByName")
         println(findMethodsByName)
         val methodDetail = getMethodDetail(project, "ProjectFileUtils.kt", "findMethodsByName")
         println(methodDetail)
     }
-
-
 
 
     override fun getTestDataPath() = "src/test/testData"

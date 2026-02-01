@@ -63,9 +63,9 @@ class ChatDatabaseService(private val project: Project) {
                 it[chatRole] = message.chatRole
                 it[timestamp] = message.timestamp
                 it[ChatMessages.sessionId] = sessionId
+                it[thought] = message.thought
             }
 
-            // 更新会话的最后更新时间
             updateSessionTimestamp(sessionId)
         }
     }
@@ -82,6 +82,7 @@ class ChatDatabaseService(private val project: Project) {
                     it[chatRole] = message.chatRole
                     it[timestamp] = message.timestamp
                     it[ChatMessages.sessionId] = sessionId
+                    it[thought] = message.thought
                 }
             }
             updateSessionTimestamp(sessionId)
@@ -101,7 +102,8 @@ class ChatDatabaseService(private val project: Project) {
                         id = row[ChatMessages.messageId],
                         content = row[ChatMessages.content],
                         chatRole = row[ChatMessages.chatRole],
-                        timestamp = row[ChatMessages.timestamp]
+                        timestamp = row[ChatMessages.timestamp],
+                        thought = row[ChatMessages.thought]
                     )
                 }
         }

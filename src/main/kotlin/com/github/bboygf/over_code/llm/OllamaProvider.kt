@@ -123,7 +123,8 @@ class OllamaProvider(
      */
     override suspend fun chatStream(
         messages: List<LLMMessage>, onChunk: (String) -> Unit, onToolCall: ((GeminiPart) -> Unit)?,
-        tools: List<GeminiTool>?
+        tools: List<GeminiTool>?,
+        onThoughtSignature: ((String) -> Unit)?
     ) {
         withContext(Dispatchers.IO) {
             try {

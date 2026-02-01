@@ -11,42 +11,8 @@ import kotlinx.io.IOException
 import java.io.File
 
 object ProjectFileUtils {
-    /**
-     * 获取项目下所有文件的列表，并生成 Markdown 格式字符串
-     * 格式：Markdown 表格
-     */
-    fun exportToMarkdown(project: Project): String {
-        val sb = StringBuilder()
-        import com . intellij . psi . PsiMethod
-                import com . intellij . psi . search . GlobalSearchScope
-                import com . intellij . psi . search . PsiShortNamesCache
-                import kotlinx . io . IOException
-        sb.append("# Project Files Report\n\n")
-        sb.append("Project Name: **${project.name}**\n\n")
-        sb.append("| File Name | Absolute Path |\n")
-        sb.append("| :--- | :--- |\n")
-
-        val fileIndex = ProjectRootManager.getInstance(project).fileIndex
-        val fileTypeManager = FileTypeManager.getInstance()
-
-        // 2. 使用读操作遍历文件系统
-        // iterateContent 会遍历项目 Content Root 下的所有文件（包含子模块）
-        runReadAction {
-            fileIndex.iterateContent { virtualFile ->
-                if (shouldInclude(virtualFile, fileTypeManager)) {
-                    // 获取文件名和路径
-                    val name = virtualFile.name
-                    val path = virtualFile.path // VirtualFile 的 path 通常就是绝对路径
-
-                    // 3. 拼接到 Markdown 表格中
-                    sb.append("| $name | $path |\n")
-                }
-                true // 返回 true 继续遍历，false 停止遍历
-            }
-        }
-
-
-        return sb.toString()
+    fun abc() {
+        println("Hello, world!")
     }
 
     /**

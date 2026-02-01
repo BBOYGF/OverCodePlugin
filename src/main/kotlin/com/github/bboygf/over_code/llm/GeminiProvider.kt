@@ -22,7 +22,10 @@ import io.ktor.utils.io.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
@@ -108,7 +111,8 @@ class GeminiProvider(
         messages: List<LLMMessage>,
         onChunk: (String) -> Unit,
         onToolCall: ((GeminiPart) -> Unit)?,
-        tools: List<GeminiTool>?
+        tools: List<GeminiTool>?,
+        onThought: ((String) -> Unit)?
     ) {
         withContext(Dispatchers.IO) {
             var line = ""
@@ -142,22 +146,36 @@ class GeminiProvider(
 
                         val responseObj = Json { ignoreUnknownKeys = true }.decodeFromString<GeminiResponse>(line)
 
-                        // 关键：遍历所有的 Part，而不是只取第一个
+                        val textChunks = mutableListOf<String>()
+                        val toolCalls = mutableListOf<GeminiPart>()
+                        val thoughtChunks = mutableListOf<String>()
+
                         responseObj.candidates?.forEach { candidate ->
                             candidate.content?.parts?.forEach { part ->
-                                // 1. 处理文本片段
-                                part.text?.let { onChunk(it) }
-
-                                // 2. 处理函数调用（可能有多个）
-                                part.functionCall?.let { call ->
-                                    onToolCall?.invoke(part) // 这里会被触发多次
+                                part.text?.let { textChunks.add(it) }
+                                // 处理 thought 字段：可能是字符串或布尔值
+                                val thoughtValue = part.thought
+                                if (thoughtValue is JsonPrimitive && thoughtValue.isString) {
+                                    thoughtChunks.add(thoughtValue.content)
+                                }
+                                // 收集工具调用和 thoughtSignature
+                                if (part.functionCall != null) {
+                                    toolCalls.add(part)
                                 }
                             }
                         }
+
+                        if (textChunks.isEmpty() && toolCalls.isEmpty() && thoughtChunks.isEmpty()) {
+                            return@execute
+                        }
+
+                        thoughtChunks.forEach { onThought?.invoke(it) }
+                        textChunks.forEach { onChunk(it) }
+                        toolCalls.forEach { onToolCall?.invoke(it) }
                     }
                 }
             } catch (e: Exception) {
-                Log.error("Gemini 访问异常", e)
+                Log.error("Gemini 访问异常$line", e)
                 if (e is CancellationException) throw e
                 throw LLMException("流式调用 Gemini API 失败: ${e.message}", e)
             }
@@ -169,8 +187,7 @@ class GeminiProvider(
      */
     private fun buildGeminiRequest(
         messages: List<LLMMessage>,
-        tools: List<GeminiTool>? = null,
-        toolConfig: GeminiToolConfig? = null
+        tools: List<GeminiTool>? = null
     ): GeminiRequest {
         val geminiContents = messages.map { msg ->
             val parts = mutableListOf<GeminiPart>()
@@ -194,9 +211,18 @@ class GeminiProvider(
                     if (msg.content.isNotEmpty()) {
                         parts.add(GeminiPart(text = msg.content))
                     }
-                    // 重点：如果模型之前发起了函数调用，必须放进历史里！
-                    if (msg.functionCall != null) {
-                        parts.add(GeminiPart(functionCall = msg.functionCall, thoughtSignature = msg.thoughtSignature))
+
+                    // 优先使用 msg.parts（保留完整的 thoughtSignature）
+                    msg.parts?.let { savedParts ->
+                        parts.addAll(savedParts)
+                    } ?: run {
+                        // 兼容旧逻辑：如果没有 parts，则从 functionCalls 构建
+                        msg.functionCalls?.forEach { call ->
+                            parts.add(GeminiPart(functionCall = call, thoughtSignature = msg.thoughtSignature))
+                        }
+                        msg.functionCall?.let { call ->
+                            parts.add(GeminiPart(functionCall = call, thoughtSignature = msg.thoughtSignature))
+                        }
                     }
                     GeminiContent(role = "model", parts = parts)
                 }
@@ -231,8 +257,10 @@ class GeminiProvider(
 
         return GeminiRequest(
             contents = geminiContents,
-            tools = tools, // 只有第一条消息需要带 tools，或者每次带都行
-            toolConfig = toolConfig
+            generationConfig = GeminiGenerationConfig(
+                thinkingConfig = GeminiThinkingConfig(includeThoughts = true)
+            ),
+            tools = tools
         )
     }
 

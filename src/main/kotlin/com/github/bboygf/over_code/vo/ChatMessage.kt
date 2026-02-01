@@ -10,5 +10,6 @@ data class ChatMessage(
     val content: String,
     val chatRole: ChatRole,
     val timestamp: Long = System.currentTimeMillis(),
-    val images: List<String> = emptyList()
+    val images: List<String> = emptyList(),
+    val thought: String? = null
 )
