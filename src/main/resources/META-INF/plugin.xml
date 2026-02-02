@@ -1,7 +1,7 @@
 <!-- 插件配置文件。阅读更多：https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 <idea-plugin>
     <!-- 插件的唯一标识符。必须在全球范围内唯一，通常使用反写域名格式。 -->
-    <id>org.jetbrains.plugins.template</id>
+    <id>com.guofan.overcode</id>
     <!-- 插件在插件市场和 IDE 设置中显示的名称。 -->
     <name>Over Code</name>
     <!-- 插件的开发商或作者信息。 -->

@@ -16,14 +16,17 @@ import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.*
 import com.intellij.psi.codeStyle.CodeStyleManager
-import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.PsiShortNamesCache
+import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.problems.WolfTheProblemSolver
 import kotlinx.io.IOException
 import java.io.File
 
 object ProjectFileUtils {
+
     /**
      * 获取项目下所有文件的列表，并生成 Markdown 格式字符串
      * 格式：Markdown 表格
@@ -53,6 +56,7 @@ object ProjectFileUtils {
         }
         return sb.toString()
     }
+
 
     private fun shouldInclude(file: VirtualFile, project: Project): Boolean {
         if (file.isDirectory) return false
@@ -404,11 +408,160 @@ object ProjectFileUtils {
 
 
     /**
-     * 内部简单数据类，用于暂存错误信息以便排序
+     * 根据目录的绝对路径获取当前目录下的所有目录 and 文件，使用md格式输出字符串。
+     * @param absolutePath 目录的绝对路径
      */
+    fun listDirectoryContents(absolutePath: String): String {
+        return runReadAction {
+            val path = FileUtil.toSystemIndependentName(absolutePath)
+
+            // 更加健壮的查找逻辑：
+            // 1. 如果路径本身包含协议 (如 temp://, file://), 直接通过 URL 查找
+            // 2. 如果是普通路径，优先尝试本地文件系统
+            // 3. 如果本地找不到且以 / 开头，尝试补充 temp:// 协议（兼容测试环境）
+            val virtualFile = when {
+                path.contains("://") -> VirtualFileManager.getInstance().findFileByUrl(path)
+                else -> {
+                    LocalFileSystem.getInstance().refreshAndFindFileByPath(path)
+                        ?: VirtualFileManager.getInstance().findFileByUrl("temp://$path")
+                        ?: VirtualFileManager.getInstance().findFileByUrl(VfsUtilCore.pathToUrl(path))
+                }
+            }
+
+            if (virtualFile == null || !virtualFile.exists()) {
+                return@runReadAction "### ❌ 失败：路径不存在\n路径: `$absolutePath`"
+            }
+
+            if (!virtualFile.isDirectory) {
+                return@runReadAction "### ❌ 失败：该路径不是一个目录\n路径: `$absolutePath`"
+            }
+
+            val sb = StringBuilder()
+            sb.append("### 目录内容: `${virtualFile.name}`\n\n")
+            sb.append("- 路径: `$absolutePath`\n\n")
+            sb.append("| 名称 | 类型 | 绝对路径 |\n")
+            sb.append("| :--- | :--- | :--- |\n")
+
+            val children = virtualFile.children ?: emptyArray()
+
+            if (children.isEmpty()) {
+                return@runReadAction "### 目录内容: `${virtualFile.name}`\n\n该目录为空。"
+            }
+
+            // 排序：目录在前，文件在后，按名称排序
+            val sortedChildren = children.sortedWith(compareBy({ !it.isDirectory }, { it.name }))
+
+            for (child in sortedChildren) {
+                val type = if (child.isDirectory) "📁 目录" else "📄 文件"
+                sb.append("| ${child.name} | $type | ${child.path} |\n")
+            }
+
+            sb.toString()
+        }
+    }
+
+    /**
+     * 检查整个项目是否有爆红，并返回 Markdown 格式的报告
+     */
+    fun inspectProjectErrors(project: Project): String {
+        val sb = StringBuilder()
+        sb.append("# 🚀 项目代码质量扫描报告\n\n")
+
+        val wolf = WolfTheProblemSolver.getInstance(project)
+        val errorFiles = mutableListOf<VirtualFile>()
+
+        // 1. 快速筛选：利用 WolfInternal 获取当前项目中已知有错的文件
+        ProjectFileIndex.getInstance(project).iterateContent { virtualFile ->
+            if (!virtualFile.isDirectory && wolf.isProblemFile(virtualFile)) {
+                errorFiles.add(virtualFile)
+            }
+            true
+        }
+
+        if (errorFiles.isEmpty()) {
+            sb.append("### ✅ 完美！\n项目内未发现任何爆红文件 (ERROR 级别)。\n")
+            return sb.toString()
+        }
+
+        sb.append("### 📊 概览\n")
+        sb.append("- 异常文件总数: **${errorFiles.size}**\n\n")
+        sb.append("---\n\n")
+
+        // 2. 遍历有错的文件，生成详细报告
+        errorFiles.forEach { file ->
+            val fileReport = reviewSingleFileInternal(project, file)
+            sb.append(fileReport).append("\n\n---\n\n")
+        }
+
+        return sb.toString()
+    }
+
+    /**
+     * 内部方法：解析单个文件的错误详情
+     */
+    private fun reviewSingleFileInternal(project: Project, virtualFile: VirtualFile): String {
+        return runReadAction {
+            val sb = StringBuilder()
+            val psiFile = PsiManager.getInstance(project).findFile(virtualFile)
+            val document = psiFile?.let { PsiDocumentManager.getInstance(project).getDocument(it) }
+
+            if (psiFile == null || document == null) {
+                return@runReadAction "#### ❌ 无法解析文件: `${virtualFile.name}`"
+            }
+
+            val errorList = mutableListOf<TempErrorInfo>()
+
+            // A. 检查语法错误 (PsiErrorElement)
+            PsiTreeUtil.collectElementsOfType(psiFile, PsiErrorElement::class.java).forEach { error ->
+                val line = try {
+                    document.getLineNumber(error.textOffset) + 1
+                } catch (e: Exception) {
+                    0
+                }
+                errorList.add(
+                    TempErrorInfo(
+                        line = line,
+                        type = "语法错误",
+                        message = error.errorDescription,
+                        codeContent = error.text.replace("\n", " ").replace("|", "\\|")
+                    )
+                )
+            }
+
+            // B. 检查语义错误 (已生成的高亮)
+            DaemonCodeAnalyzerEx.processHighlights(
+                document, project, HighlightSeverity.ERROR, 0, document.textLength
+            ) { info ->
+                val line = document.getLineNumber(info.startOffset) + 1
+                val content = document.getText(TextRange(info.startOffset, info.endOffset))
+                    .replace("\n", " ")
+                    .replace("|", "\\|")
+                val msg = (info.description ?: "未知错误").replace("|", "\\|")
+
+                if (errorList.none { it.line == line && it.message == msg }) {
+                    errorList.add(TempErrorInfo(line, "语义错误", msg, content))
+                }
+                true
+            }
+
+            // 构造该文件的表格
+            val relativePath = virtualFile.path.removePrefix(project.basePath ?: "")
+            sb.append("#### 📄 文件: `$relativePath`\n")
+            sb.append("| 行号 | 类型 | 错误描述 | 问题代码 |\n")
+            sb.append("| :--- | :--- | :--- | :--- |\n")
+
+            errorList.sortedBy { it.line }.forEach { err ->
+                val cleanCode = if (err.codeContent.length > 40) err.codeContent.take(40) + "..." else err.codeContent
+                sb.append("| ${err.line} | ${err.type} | ${err.message} | `${cleanCode.ifBlank { "N/A" }}` |\n")
+            }
+
+            sb.toString()
+        }
+    }
+
     private data class TempErrorInfo(
         val line: Int,
-        val type: String,   // "语法错误" 或 "语义错误"
+        val type: String,
         val message: String,
         val codeContent: String
     )
@@ -423,83 +576,7 @@ object ProjectFileUtils {
     fun reviewCodeByFile(project: Project, filePath: String): String {
         val virtualFile = LocalFileSystem.getInstance().findFileByPath(filePath)
             ?: return "### ❌ 文件未找到\n路径: `$filePath`"
-
-        return runReadAction {
-            val sb = StringBuilder()
-            val fileTitle = virtualFile.name
-            val psiFile = PsiManager.getInstance(project).findFile(virtualFile)
-            val document = psiFile?.let { PsiDocumentManager.getInstance(project).getDocument(it) }
-
-            if (psiFile == null || document == null) {
-                return@runReadAction "### ❌ 无法解析文件内容: $fileTitle"
-            }
-
-            val errorList = mutableListOf<TempErrorInfo>()
-
-            // 1. 检查语法错误 (PsiErrorElement) - 最直接的红线
-            PsiTreeUtil.collectElementsOfType(psiFile, PsiErrorElement::class.java).forEach { error ->
-                val line = document.getLineNumber(error.textOffset) + 1
-                errorList.add(
-                    TempErrorInfo(
-                        line = line,
-                        type = "Syntax Error",
-                        message = error.errorDescription,
-                        codeContent = error.text.replace("\n", " ").replace("|", "\\|")
-                    )
-                )
-            }
-
-            // 2. 检查语义错误 (使用通用的 processHighlights 方法)
-            // 该方法会遍历文档中已经生成的高亮信息
-            DaemonCodeAnalyzerEx.processHighlights(
-                document,
-                project,
-                HighlightSeverity.ERROR, // 只获取 ERROR 级别
-                0,
-                document.textLength
-            ) { info ->
-                val line = document.getLineNumber(info.startOffset) + 1
-                val content = document.getText(TextRange(info.startOffset, info.endOffset))
-                    .replace("\n", " ")
-                    .replace("|", "\\|")
-
-                val msg = (info.description ?: "Unknown Error").replace("|", "\\|")
-
-                // 去重逻辑：如果同一个位置已经有了语法错误，就不再重复添加语义错误
-                if (errorList.none { it.line == line && it.message == msg }) {
-                    errorList.add(
-                        TempErrorInfo(
-                            line = line,
-                            type = "Semantic Error",
-                            message = msg,
-                            codeContent = content
-                        )
-                    )
-                    true // 继续处理下一个
-                } else true
-            }
-
-            // 3. 构造 MD 字符串
-            if (errorList.isEmpty()) {
-                sb.append("### ✅ 代码检查通过: $fileTitle\n\n")
-                sb.append("- 路径: `$filePath`\n")
-                sb.append("- 结果: 未发现任何报错 (ERROR)。\n")
-            } else {
-                sb.append("### 🔴 代码发现爆红: $fileTitle\n\n")
-                sb.append("- 路径: `$filePath`\n")
-                sb.append("- 错误总数: **${errorList.size}**\n\n")
-                sb.append("| 行号 | 类型 | 错误描述 | 问题代码 |\n")
-                sb.append("| :--- | :--- | :--- | :--- |\n")
-
-                errorList.sortedBy { it.line }.forEach { err ->
-                    val cleanCode =
-                        if (err.codeContent.length > 50) err.codeContent.take(50) + "..." else err.codeContent
-                    sb.append("| ${err.line} | ${err.type} | ${err.message} | `${cleanCode.ifBlank { "N/A" }}` |\n")
-                }
-            }
-
-            sb.toString()
-        }
+        return reviewSingleFileInternal(project, virtualFile)
     }
 }
 

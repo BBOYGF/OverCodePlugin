@@ -244,6 +244,19 @@ class HomeViewModel(
                 }
             ),
             GeminiFunctionDeclaration(
+                name = "list_directory_contents",
+                description = "根据目录的绝对路径获取当前目录下的所有目录 and 文件，使用md格式输出字符串。",
+                parameters = buildJsonObject {
+                    put("type", "object")
+                    put("properties", buildJsonObject {
+                        putJsonObject("absolutePath") {
+                            put("type", "string")
+                            put("description", "文件的绝对路径")
+                        }
+                    })
+                }
+            ),
+            GeminiFunctionDeclaration(
                 name = "read_file_content",
                 description = "根据文件的绝对路径读取文件内容",
                 parameters = buildJsonObject {
@@ -300,16 +313,11 @@ class HomeViewModel(
                 }
             ),
             GeminiFunctionDeclaration(
-                name = "review_code_by_file",
-                description = "检查文件是否有爆红，代码格式是否异常，并直接返回 Markdown 格式的报告",
+                name = "inspect_project_errors",
+                description = "检查整个项目是否有爆红，并返回 Markdown 格式的报告",
                 parameters = buildJsonObject {
                     put("type", "object")
-                    put("properties", buildJsonObject {
-                        putJsonObject("filePath") {
-                            put("type", "string")
-                            put("description", "文件绝对路径")
-                        }
-                    })
+                    put("properties", buildJsonObject { })
                 }
             )
         )
@@ -453,6 +461,7 @@ class HomeViewModel(
             } catch (e: Exception) {
                 "读取项目失败: ${e.message}"
             }
+
             "create_file_or_dir" -> {
                 val path = args["absolutePath"]?.jsonPrimitive?.content ?: ""
                 val isDir = args["isDirectory"]?.jsonPrimitive?.booleanOrNull ?: false
@@ -463,23 +472,28 @@ class HomeViewModel(
                     "创建成功！"
                 }
             }
+
             "read_file_content" -> {
                 val path = args["absolutePath"]?.jsonPrimitive?.content ?: ""
                 ProjectFileUtils.readFileContent(path) ?: "null"
             }
+
             "delete_file" -> {
                 val path = args["absolutePath"]?.jsonPrimitive?.content ?: ""
                 ProjectFileUtils.deleteFile(project!!, path)
             }
+
             "get_file_fun_info" -> {
                 val filePath = args["filePath"]?.jsonPrimitive?.content ?: ""
                 ProjectFileUtils.getFileFunInfo(project!!, filePath)
             }
+
             "get_method_detail" -> {
                 val fileName = args["fileName"]?.jsonPrimitive?.content ?: ""
                 val methodName = args["methodName"]?.jsonPrimitive?.content ?: ""
                 ProjectFileUtils.getMethodDetail(project!!, fileName, methodName)
             }
+
             "replace_code_by_line" -> {
                 val filePath = args["filePath"]?.jsonPrimitive?.content ?: ""
                 val startOffset = args["startLine"]?.jsonPrimitive?.int ?: 0
@@ -487,14 +501,21 @@ class HomeViewModel(
                 val newCodeString = args["newCodeString"]?.jsonPrimitive?.content ?: ""
                 ProjectFileUtils.replaceCodeByLine(project!!, filePath, startOffset, endOffset, newCodeString)
             }
+
             "find_methods_by_name" -> {
                 val methodName = args["methodName"]?.jsonPrimitive?.content ?: ""
                 ProjectFileUtils.findMethodsByName(project!!, methodName)
             }
-            "review_code_by_file" -> {
-                val filePath = args["filePath"]?.jsonPrimitive?.content ?: ""
-                ProjectFileUtils.reviewCodeByFile(project!!, filePath)
+
+            "inspect_project_errors" -> {
+                ProjectFileUtils.inspectProjectErrors(project!!)
             }
+
+            "list_directory_contents"->{
+                val path = args["absolutePath"]?.jsonPrimitive?.content ?: ""
+                ProjectFileUtils.listDirectoryContents(path)
+            }
+
             else -> "Unknown function: ${functionCall.name}"
         }
     }
