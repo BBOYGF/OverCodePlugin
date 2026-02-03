@@ -32,6 +32,7 @@ object ProjectFileUtils {
      * 格式：Markdown 表格
      */
     fun exportToMarkdown(project: Project): String {
+        Log.info("调用工具，获取项目下的所有文件列表")
         val sb = StringBuilder()
         // 1. 写入 Markdown 表头
         sb.append("# Project Files Report\n\n")
@@ -82,34 +83,83 @@ object ProjectFileUtils {
      * @param absolutePath 文件的绝对路径
      * @return 带行号的文件内容字符串，如果文件不存在则返回 null
      */
-    fun readFileContent(absolutePath: String): String? {
-        val path = FileUtil.toSystemIndependentName(absolutePath)
-        // 建议先刷新，确保获取最新内容
-        val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByPath(path)
+    fun readFileContent(absolutePath: String): String {
+        return try {
+            Log.info("调用工具，根据文件路径读取文件内容: $absolutePath")
+            val path = FileUtil.toSystemIndependentName(absolutePath)
+            val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByPath(path)
 
-        if (virtualFile == null || virtualFile.isDirectory) {
-            return "读取失败文件不存在！"
-        }
-
-        return runReadAction {
-            try {
-                val rawContent = VfsUtil.loadText(virtualFile)
-
-                // 将内容按行拆分，并添加行号前缀
-                val lines = rawContent.lines() // 自动处理 \n, \r\n
-                val contentWithLineNumbers = lines.mapIndexed { index, lineText ->
-                    // index 从 0 开始，所以行号需要 + 1
-                    "${index + 1} | $lineText"
-                }.joinToString("\n")
-
-                contentWithLineNumbers
-            } catch (e: IOException) {
-                e.printStackTrace()
-                Log.error("读取文件失败", e)
-                "读取文件失败：$absolutePath ${e.message}"
+            if (virtualFile == null || virtualFile.isDirectory) {
+                return "读取失败：文件不存在或路径是目录！"
             }
+
+            // 1. 安全检查：限制读取大小（例如超过 1MB 就不读了，防止 OOM 和 Token 溢出）
+            val maxSizeBytes = 1024 * 1024 // 1MB
+            if (virtualFile.length > maxSizeBytes) {
+                return "读取失败：文件过大 (${virtualFile.length / 1024} KB)，为了安全起见已跳过。请尝试缩小范围。"
+            }
+
+            runReadAction {
+                val rawContent = VfsUtil.loadText(virtualFile)
+                val lines = rawContent.lines()
+
+                // 2. 使用 StringBuilder 减少内存碎片的产生
+                val result = StringBuilder()
+                lines.forEachIndexed { index, lineText ->
+                    result.append(index + 1).append(" | ").append(lineText).append("\n")
+                }
+                result.toString()
+            }
+        } catch (e: Throwable) {
+            // 3. 捕获所有异常，确保工具调用流程不会中断
+            val errorMsg = "读取文件时发生意外错误: ${e.message}"
+            Log.error(errorMsg, e)
+            errorMsg
         }
     }
+
+    /**
+     * 根据文件路径、起始行号、终止行号读取文件内容（带行号）
+     *
+     * @param absolutePath 文件的绝对路径
+     * @param startLine 起始行号 (从 1 开始)
+     * @param endLine 终止行号 (从 1 开始)
+     * @return 带行号的文件内容字符串
+     */
+    fun readFileRange(absolutePath: String, startLine: Int, endLine: Int): String {
+        return try {
+            Log.info("调用工具，根据范围读取文件内容: $absolutePath ($startLine - $endLine)")
+            val path = FileUtil.toSystemIndependentName(absolutePath)
+            val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByPath(path)
+
+            if (virtualFile == null || virtualFile.isDirectory) {
+                return "读取失败：文件不存在或路径是目录！"
+            }
+
+            runReadAction {
+                val rawContent = VfsUtil.loadText(virtualFile)
+                val lines = rawContent.lines()
+
+                val result = StringBuilder()
+                val actualStart = (startLine - 1).coerceAtLeast(0)
+                val actualEnd = (endLine - 1).coerceAtMost(lines.size - 1)
+
+                if (actualStart > actualEnd) {
+                    return@runReadAction "读取失败：起始行号 $startLine 大于终止行号 $endLine 或超出范围"
+                }
+
+                for (i in actualStart..actualEnd) {
+                    result.append(i + 1).append(" | ").append(lines[i]).append("\n")
+                }
+                result.toString()
+            }
+        } catch (e: Throwable) {
+            val errorMsg = "范围读取文件时发生意外错误: ${e.message}"
+            Log.error(errorMsg, e)
+            errorMsg
+        }
+    }
+
 
     /**
      * 根据文件获取文件内所有方法详情（返回行号信息）
@@ -117,6 +167,7 @@ object ProjectFileUtils {
      * @param filePath 文件名
      */
     fun getFileFunInfo(project: Project, filePath: String): String {
+        Log.info("调用工具，根据文件获取文件内所有方法详情（返回行号信息）")
         val virtualFile = LocalFileSystem.getInstance().findFileByPath(filePath)
             ?: return "### ❌ 失败：未找到文件\n路径: `$filePath`"
 
@@ -168,7 +219,7 @@ object ProjectFileUtils {
      * @param methodName 要查找的方法名
      */
     fun getMethodDetail(project: Project, filePath: String, methodName: String): String {
-
+        Log.info("调用工具，根据文件名和方法名获取特定方法的详情")
         val virtualFile = LocalFileSystem.getInstance().findFileByPath(filePath)
             ?: return "### ❌ 失败：未找到文件\n路径: `$filePath`"
         return runReadAction {
@@ -222,6 +273,7 @@ object ProjectFileUtils {
      * @return 创建成功的 VirtualFile，如果失败则返回 null
      */
     fun createFileOrDir(project: Project, absolutePath: String, isDirectory: Boolean): VirtualFile? {
+        Log.info("调用工具，创建文件或目录")
         // 将路径转换为系统无关路径 (处理 Windows 反斜杠问题)
         val systemIndependentPath = FileUtil.toSystemIndependentName(absolutePath)
 
@@ -258,6 +310,7 @@ object ProjectFileUtils {
      * @param absolutePath 要删除的绝对路径
      */
     fun deleteFile(project: Project, absolutePath: String): String {
+        Log.info("调用工具，根据绝对路径删除文件或目录")
         val path = FileUtil.toSystemIndependentName(absolutePath)
         // 先尝试在 VFS 中找到这个文件 (需要刷新以确保同步)
         val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByPath(path)
@@ -293,6 +346,7 @@ object ProjectFileUtils {
         endLine: Int,
         newCodeString: String
     ): String {
+        Log.info("调用工具，根据行号替换文件内容")
         // 1. 通过绝对路径加载 VirtualFile
         val virtualFile = LocalFileSystem.getInstance().findFileByPath(filePath)
             ?: return "### ❌ 失败：未找到文件\n路径: `$filePath`"
@@ -369,12 +423,13 @@ object ProjectFileUtils {
     }
 
     /**
-     * 根据方法名在项目中查找其所属的类、文件路径和行号。
+     * 根据方法名在项目中查找其所属的类、文件路径和行号范围。
      * @param project 项目对象
      * @param methodName 方法名
      * @return Markdown 格式的查找结果
      */
     fun findMethodsByName(project: Project, methodName: String): String {
+        Log.info("调用工具，根据方法名在项目中查找其所属的类、文件路径和行号范围。")
         return runReadAction {
             val scope = GlobalSearchScope.projectScope(project)
             val methods = PsiShortNamesCache.getInstance(project).getMethodsByName(methodName, scope)
@@ -385,7 +440,7 @@ object ProjectFileUtils {
 
             val sb = StringBuilder()
             sb.append("### 查找结果: `$methodName` \n\n")
-            sb.append("| 类名 | 文件名 | 绝对路径 | 行号 |\n")
+            sb.append("| 类名 | 文件名 | 绝对路径 | 行号范围 |\n")
             sb.append("| :--- | :--- | :--- | :--- |\n")
 
             methods.forEach { method ->
@@ -393,13 +448,65 @@ object ProjectFileUtils {
                 val psiFile = method.containingFile
                 val virtualFile = psiFile.virtualFile
                 val document = PsiDocumentManager.getInstance(project).getDocument(psiFile)
-                val lineNumber = document?.getLineNumber(method.textOffset)?.plus(1) ?: -1
+
+                val lineRange = if (document != null) {
+                    val start = document.getLineNumber(method.textRange.startOffset) + 1
+                    val end = document.getLineNumber(method.textRange.endOffset) + 1
+                    "$start - $end"
+                } else {
+                    "未知"
+                }
 
                 val className = psiClass?.qualifiedName ?: "顶层函数"
                 val fileName = virtualFile.name
                 val filePath = virtualFile.path
 
-                sb.append("| $className | $fileName | $filePath | $lineNumber |\n")
+                sb.append("| $className | $fileName | $filePath | $lineRange |\n")
+            }
+
+            sb.toString()
+        }
+    }
+
+    /**
+     * 根据类名在项目中查找其所属的文件、文件路径和行号范围。
+     * @param project 项目对象
+     * @param className 类名
+     * @return Markdown 格式的查找结果
+     */
+    fun findClassesByName(project: Project, className: String): String {
+        Log.info("调用工具，根据类名在项目中查找其所属的文件、文件路径和行号范围。")
+        return runReadAction {
+            val scope = GlobalSearchScope.projectScope(project)
+            val classes = PsiShortNamesCache.getInstance(project).getClassesByName(className, scope)
+
+            if (classes.isEmpty()) {
+                return@runReadAction "未在项目中找到名为 `$className` 的类。"
+            }
+
+            val sb = StringBuilder()
+            sb.append("### 查找结果: `$className` \n\n")
+            sb.append("| 全类名 | 文件名 | 绝对路径 | 行号范围 |\n")
+            sb.append("| :--- | :--- | :--- | :--- |\n")
+
+            classes.forEach { psiClass ->
+                val psiFile = psiClass.containingFile
+                val virtualFile = psiFile.virtualFile
+                val document = PsiDocumentManager.getInstance(project).getDocument(psiFile)
+
+                val lineRange = if (document != null) {
+                    val start = document.getLineNumber(psiClass.textRange.startOffset) + 1
+                    val end = document.getLineNumber(psiClass.textRange.endOffset) + 1
+                    "$start - $end"
+                } else {
+                    "未知"
+                }
+
+                val fullClassName = psiClass.qualifiedName ?: psiClass.name ?: "未知"
+                val fileName = virtualFile.name
+                val filePath = virtualFile.path
+
+                sb.append("| $fullClassName | $fileName | $filePath | $lineRange |\n")
             }
 
             sb.toString()
@@ -412,6 +519,7 @@ object ProjectFileUtils {
      * @param absolutePath 目录的绝对路径
      */
     fun listDirectoryContents(absolutePath: String): String {
+        Log.info("调用工具，根据目录的绝对路径获取当前目录下的所有目录 and 文件，使用md格式输出字符串。")
         return runReadAction {
             val path = FileUtil.toSystemIndependentName(absolutePath)
 
@@ -464,6 +572,7 @@ object ProjectFileUtils {
      * 检查整个项目是否有爆红，并返回 Markdown 格式的报告
      */
     fun inspectProjectErrors(project: Project): String {
+        Log.info("调用工具，检查整个项目是否有爆红，并返回 Markdown 格式的报告")
         val sb = StringBuilder()
         sb.append("# 🚀 项目代码质量扫描报告\n\n")
 

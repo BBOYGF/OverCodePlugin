@@ -47,14 +47,14 @@ fun WelcomeScreen() {
         // Over Code Logo (使用简单的圆形图标代替)
         Box(
             modifier = Modifier
-                .size(80.dp)
+                .size(200.dp)
                 .background(
                     color = Color(0xFF4A4A4A),
                     shape = CircleShape
                 ),
             contentAlignment = Alignment.Center
         ) {
-            Image(modifier = Modifier.width(70.dp).height(60.dp),painter = painterResource("/image/o.png"), contentDescription = "logo")
+            Image(modifier = Modifier.width(200.dp).height(200.dp),painter = painterResource("/image/o.png"), contentDescription = "logo")
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -95,7 +95,7 @@ fun WelcomeScreen() {
                     modifier = Modifier
                         .size(40.dp)
                         .background(
-                            color = Color(0xFF4A9D5F),
+                            color = Color(0xFF5D44A1),
                             shape = CircleShape
                         ),
                     contentAlignment = Alignment.Center
@@ -236,7 +236,7 @@ fun MessageBubble(
                                 Icon(
                                     imageVector = Icons.Default.Build, // 工具图标
                                     contentDescription = "工具",
-                                    tint = Color(0xFF4A9D5F),
+                                    tint = Color(0xFFFFA726),
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(Modifier.width(8.dp))
@@ -244,7 +244,7 @@ fun MessageBubble(
                                     text = "Tool Execution",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF4A9D5F)
+                                    color = Color(0xFFFFA726)
                                 )
                             }
                             else -> {
@@ -252,7 +252,7 @@ fun MessageBubble(
                                     text = "Over Code:",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF4A9D5F),
+                                    color = Color(0xFFFFA726),
                                 )
                             }
                         }
@@ -305,7 +305,7 @@ fun MessageBubble(
                                     SelectionContainer {
                                         Text(
                                             text = if (part.index != null) "${part.index}. " else "• ",
-                                            color = Color(0xFF4A9D5F),
+                                            color = Color(0xFFFFA726),
                                             fontWeight = FontWeight.Bold
                                         )
                                     }

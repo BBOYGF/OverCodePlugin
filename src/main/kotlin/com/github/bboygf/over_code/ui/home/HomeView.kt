@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposePanel
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -42,6 +43,7 @@ import com.intellij.openapi.fileChooser.FileChooserDescriptor
 
 import com.intellij.ui.content.ContentFactory
 import kotlinx.coroutines.launch
+import org.jetbrains.skia.Font
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.swing.JComponent
@@ -167,6 +169,7 @@ fun OverCodeChatUI(project: Project? = null) {
                     Text(
                         text = "会话",
                         fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
                         color = textPrimaryColor
                     )
                 },

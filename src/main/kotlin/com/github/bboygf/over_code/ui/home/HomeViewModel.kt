@@ -8,7 +8,6 @@ import com.github.bboygf.over_code.enums.ChatPattern
 import com.github.bboygf.over_code.enums.ChatRole
 import com.github.bboygf.over_code.llm.LLMService
 import com.github.bboygf.over_code.po.GeminiFunctionCall
-import com.github.bboygf.over_code.po.GeminiFunctionDeclaration
 import com.github.bboygf.over_code.po.GeminiPart
 import com.github.bboygf.over_code.po.GeminiTool
 import com.github.bboygf.over_code.po.LLMMessage
@@ -32,14 +31,8 @@ import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.util.concurrent.CopyOnWriteArrayList
 import com.github.bboygf.over_code.utils.ImageUtils
-import com.github.bboygf.over_code.utils.Log
 import com.github.bboygf.over_code.utils.ProjectFileUtils
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonObject
+import com.github.bboygf.over_code.utils.ToolRegistry
 
 
 /**
@@ -234,154 +227,13 @@ class HomeViewModel(
         }.toMutableList()
 
         // 工具定义
-        val tools = mutableListOf(
-            GeminiFunctionDeclaration(
-                name = "get_project_info",
-                description = "读取当前项目的完整文件结构和内容。",
-                parameters = buildJsonObject {
-                    put("type", "object")
-                    put("properties", buildJsonObject {})
-                }
-            ),
-            GeminiFunctionDeclaration(
-                name = "list_directory_contents",
-                description = "根据目录的绝对路径获取当前目录下的所有目录 and 文件，使用md格式输出字符串。",
-                parameters = buildJsonObject {
-                    put("type", "object")
-                    put("properties", buildJsonObject {
-                        putJsonObject("absolutePath") {
-                            put("type", "string")
-                            put("description", "文件的绝对路径")
-                        }
-                    })
-                }
-            ),
-            GeminiFunctionDeclaration(
-                name = "read_file_content",
-                description = "根据文件的绝对路径读取文件内容",
-                parameters = buildJsonObject {
-                    put("type", "object")
-                    put("properties", buildJsonObject {
-                        putJsonObject("absolutePath") {
-                            put("type", "string")
-                            put("description", "文件的绝对路径")
-                        }
-                    })
-                }
-            ),
-            GeminiFunctionDeclaration(
-                name = "get_file_fun_info",
-                description = "根据文件的绝对路径获取文件内所有方法详情并返回方法的行号信息",
-                parameters = buildJsonObject {
-                    put("type", "object")
-                    put("properties", buildJsonObject {
-                        putJsonObject("filePath") {
-                            put("type", "string")
-                            put("description", "文件的绝对路径")
-                        }
-                    })
-                }
-            ),
-            GeminiFunctionDeclaration(
-                name = "get_method_detail",
-                description = "根据文件的绝对路径和方法名获取特定方法的详情及起始终止行号",
-                parameters = buildJsonObject {
-                    put("type", "object")
-                    put("properties", buildJsonObject {
-                        putJsonObject("fileName") {
-                            put("type", "string")
-                            put("description", "文件的绝对路径")
-                        }
-                        putJsonObject("methodName") {
-                            put("type", "string") // 建议直接用 boolean 类型
-                            put("description", "要查找的方法名")
-                        }
-                    })
-                }
-            ),
-            GeminiFunctionDeclaration(
-                name = "find_methods_by_name",
-                description = "根据方法名在项目中查找其所属的类、文件路径和行号",
-                parameters = buildJsonObject {
-                    put("type", "object")
-                    put("properties", buildJsonObject {
-                        putJsonObject("methodName") {
-                            put("type", "string")
-                            put("description", "方法名")
-                        }
-                    })
-                }
-            ),
-            GeminiFunctionDeclaration(
-                name = "inspect_project_errors",
-                description = "检查整个项目是否有爆红，并返回 Markdown 格式的报告",
-                parameters = buildJsonObject {
-                    put("type", "object")
-                    put("properties", buildJsonObject { })
-                }
-            )
-        )
-        if (chatMode == ChatPattern.执行模式) {
-            Log.info("执行模式！")
-            val writeTools: List<GeminiFunctionDeclaration> = listOf(
-                GeminiFunctionDeclaration(
-                    name = "create_file_or_dir",
-                    description = "根据文件绝对路径创建文件或者目录",
-                    parameters = buildJsonObject {
-                        put("type", "object")
-                        put("properties", buildJsonObject {
-                            putJsonObject("absolutePath") {
-                                put("type", "string")
-                                put("description", "文件的绝对路径")
-                            }
-                            putJsonObject("isDirectory") {
-                                put("type", "boolean") // 建议直接用 boolean 类型
-                                put("description", "是否为目录，true表示目录，false表示文件")
-                            }
-                        })
-                    }
-                ),
-                GeminiFunctionDeclaration(
-                    name = "replace_code_by_line",
-                    description = "根据文件名、起始行号、终止行号替换文件内容。",
-                    parameters = buildJsonObject {
-                        put("type", "object")
-                        put("properties", buildJsonObject {
-                            putJsonObject("filePath") {
-                                put("type", "string")
-                                put("description", "文件的绝对路径")
-                            }
-                            putJsonObject("startLine") {
-                                put("type", "integer")
-                                put("description", "起始行号 (从 1 开始)")
-                            }
-                            putJsonObject("endLine") {
-                                put("type", "integer")
-                                put("description", "结束行号 (从 1 开始)")
-                            }
-                            putJsonObject("newCodeString") {
-                                put("type", "string")
-                                put("description", "新的代码")
-                            }
-                        })
-                    }
-                ),
-                GeminiFunctionDeclaration(
-                    name = "delete_file",
-                    description = "根据绝对路径删除文件或目录",
-                    parameters = buildJsonObject {
-                        put("type", "object")
-                        put("properties", buildJsonObject {
-                            putJsonObject("absolutePath") {
-                                put("type", "string")
-                                put("description", "文件的绝对路径")
-                            }
-                        })
-                    }
-                ))
-            tools.addAll(writeTools)
-        }
+        // 使用注册表自动加载工具
+        val tools = ToolRegistry.allTools
+            .filter { !it.isWriteTool || chatMode == ChatPattern.执行模式 }
+            .map { it.toDeclaration() }
+
         val geminiTools = listOf(GeminiTool(tools))
+
         currentJob = ioScope.launch {
             // 用于累计最终显示的文本
             val contentBuilder = StringBuilder()
@@ -408,6 +260,16 @@ class HomeViewModel(
             }
         }
     }
+
+    /**
+     * 执行工具调用
+     */
+    private fun executeTool(functionCall: GeminiFunctionCall): String {
+        val tool = ToolRegistry.allTools.find { it.name == functionCall.name }
+            ?: return "Unknown function: ${functionCall.name}"
+        return tool.execute(project!!, functionCall.args, chatMode)
+    }
+
 
     /**
      * 从外部（如Action）发送消息到聊天窗口
@@ -450,75 +312,6 @@ class HomeViewModel(
         val result: String
     )
 
-    /**
-     * 执行工具调用
-     */
-    private fun executeTool(functionCall: GeminiFunctionCall): String {
-        val args = functionCall.args
-        return when (functionCall.name) {
-            "get_project_info" -> try {
-                ProjectFileUtils.exportToMarkdown(project!!)
-            } catch (e: Exception) {
-                "读取项目失败: ${e.message}"
-            }
-
-            "create_file_or_dir" -> {
-                val path = args["absolutePath"]?.jsonPrimitive?.content ?: ""
-                val isDir = args["isDirectory"]?.jsonPrimitive?.booleanOrNull ?: false
-                val createFileOrDir = ProjectFileUtils.createFileOrDir(project!!, path, isDir)
-                if (createFileOrDir == null || !createFileOrDir.exists()) {
-                    "创建失败！"
-                } else {
-                    "创建成功！"
-                }
-            }
-
-            "read_file_content" -> {
-                val path = args["absolutePath"]?.jsonPrimitive?.content ?: ""
-                ProjectFileUtils.readFileContent(path) ?: "null"
-            }
-
-            "delete_file" -> {
-                val path = args["absolutePath"]?.jsonPrimitive?.content ?: ""
-                ProjectFileUtils.deleteFile(project!!, path)
-            }
-
-            "get_file_fun_info" -> {
-                val filePath = args["filePath"]?.jsonPrimitive?.content ?: ""
-                ProjectFileUtils.getFileFunInfo(project!!, filePath)
-            }
-
-            "get_method_detail" -> {
-                val fileName = args["fileName"]?.jsonPrimitive?.content ?: ""
-                val methodName = args["methodName"]?.jsonPrimitive?.content ?: ""
-                ProjectFileUtils.getMethodDetail(project!!, fileName, methodName)
-            }
-
-            "replace_code_by_line" -> {
-                val filePath = args["filePath"]?.jsonPrimitive?.content ?: ""
-                val startOffset = args["startLine"]?.jsonPrimitive?.int ?: 0
-                val endOffset = args["endLine"]?.jsonPrimitive?.int ?: 0
-                val newCodeString = args["newCodeString"]?.jsonPrimitive?.content ?: ""
-                ProjectFileUtils.replaceCodeByLine(project!!, filePath, startOffset, endOffset, newCodeString)
-            }
-
-            "find_methods_by_name" -> {
-                val methodName = args["methodName"]?.jsonPrimitive?.content ?: ""
-                ProjectFileUtils.findMethodsByName(project!!, methodName)
-            }
-
-            "inspect_project_errors" -> {
-                ProjectFileUtils.inspectProjectErrors(project!!)
-            }
-
-            "list_directory_contents"->{
-                val path = args["absolutePath"]?.jsonPrimitive?.content ?: ""
-                ProjectFileUtils.listDirectoryContents(path)
-            }
-
-            else -> "Unknown function: ${functionCall.name}"
-        }
-    }
 
     /**
      * 核心递归函数：处理 对话 -> 工具调用 -> 再次对话 的循环

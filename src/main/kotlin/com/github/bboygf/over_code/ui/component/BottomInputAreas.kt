@@ -183,7 +183,6 @@ fun BottomInputArea(
                     modifier = Modifier
                         .fillMaxWidth()
                         .onPreviewKeyEvent {
-                            Log.info("PreviewKeyEvent: ${it.key}")
                             if (it.key == Key.V && (it.isCtrlPressed || it.isMetaPressed) && it.type == KeyEventType.KeyDown) {
                                 if (onPasteImage()) {
                                     return@onPreviewKeyEvent true
@@ -330,7 +329,7 @@ fun BottomInputArea(
                                             text = {
                                                 Text(
                                                     config.name,
-                                                    color = if (config.isActive) Color(0xFF4A9D5F) else Color.White
+                                                    color = if (config.isActive) Color(0xFFFFA726) else Color.White
                                                 )
                                             },
                                             onClick = {
@@ -346,7 +345,7 @@ fun BottomInputArea(
                         // 是否携带历史消息
                         Checkbox(isChecked, onCheckedChange = {
                             onLoadHistoryChange(it)
-                        })
+                        },colors = CheckboxDefaults.colors(checkedColor = Color(0xFF5D44A1)))
                         Text(
                             text = "历史消息",
                             color = Color(0xFF888888),
