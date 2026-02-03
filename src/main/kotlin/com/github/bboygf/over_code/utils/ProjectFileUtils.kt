@@ -28,6 +28,14 @@ import java.io.File
 object ProjectFileUtils {
 
     /**
+     * 清理路径
+     */
+    private fun sanitizePath(path: String): String {
+        val clean = path.replace(Regex("<ctrl\\d+>"), "").trim()
+        return FileUtil.toSystemIndependentName(clean)
+    }
+
+    /**
      * 获取项目下所有文件的列表，并生成 Markdown 格式字符串
      * 格式：Markdown 表格
      */
@@ -86,7 +94,9 @@ object ProjectFileUtils {
     fun readFileContent(absolutePath: String): String {
         return try {
             Log.info("调用工具，根据文件路径读取文件内容: $absolutePath")
-            val path = FileUtil.toSystemIndependentName(absolutePath)
+            val cleanPath = sanitizePath(absolutePath)
+
+            val path = FileUtil.toSystemIndependentName(cleanPath)
             val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByPath(path)
 
             if (virtualFile == null || virtualFile.isDirectory) {
@@ -129,7 +139,8 @@ object ProjectFileUtils {
     fun readFileRange(absolutePath: String, startLine: Int, endLine: Int): String {
         return try {
             Log.info("调用工具，根据范围读取文件内容: $absolutePath ($startLine - $endLine)")
-            val path = FileUtil.toSystemIndependentName(absolutePath)
+            val cleanPath = sanitizePath(absolutePath)
+            val path = FileUtil.toSystemIndependentName(cleanPath)
             val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByPath(path)
 
             if (virtualFile == null || virtualFile.isDirectory) {
@@ -164,19 +175,20 @@ object ProjectFileUtils {
     /**
      * 根据文件获取文件内所有方法详情（返回行号信息）
      * @param project 项目
-     * @param filePath 文件名
+     * @param absolutePath 文件名
      */
-    fun getFileFunInfo(project: Project, filePath: String): String {
+    fun getFileFunInfo(project: Project, absolutePath: String): String {
+        val cleanPath = sanitizePath(absolutePath)
         Log.info("调用工具，根据文件获取文件内所有方法详情（返回行号信息）")
-        val virtualFile = LocalFileSystem.getInstance().findFileByPath(filePath)
-            ?: return "### ❌ 失败：未找到文件\n路径: `$filePath`"
+        val virtualFile = LocalFileSystem.getInstance().findFileByPath(cleanPath)
+            ?: return "### ❌ 失败：未找到文件\n路径: `$cleanPath`"
 
         return runReadAction {
             val stringBuilder = StringBuilder()
             val psiManager = PsiManager.getInstance(project)
             val documentManager = PsiDocumentManager.getInstance(project) // 1. 获取文档管理器
 
-            val psiFile = psiManager.findFile(virtualFile) ?: return@runReadAction "文件路径不存在$filePath 请重试！"
+            val psiFile = psiManager.findFile(virtualFile) ?: return@runReadAction "文件路径不存在$absolutePath 请重试！"
             val document = documentManager.getDocument(psiFile) // 2. 获取该文件的 Document 对象
 
             if (psiFile is PsiClassOwner) {
@@ -215,19 +227,20 @@ object ProjectFileUtils {
     /**
      * 根据文件名和方法名获取特定方法的详情
      * @param project 项目对象
-     * @param filePath 文件的绝对路径
+     * @param absolutePath 文件的绝对路径
      * @param methodName 要查找的方法名
      */
-    fun getMethodDetail(project: Project, filePath: String, methodName: String): String {
+    fun getMethodDetail(project: Project, absolutePath: String, methodName: String): String {
+        val cleanPath = sanitizePath(absolutePath)
         Log.info("调用工具，根据文件名和方法名获取特定方法的详情")
-        val virtualFile = LocalFileSystem.getInstance().findFileByPath(filePath)
-            ?: return "### ❌ 失败：未找到文件\n路径: `$filePath`"
+        val virtualFile = LocalFileSystem.getInstance().findFileByPath(cleanPath)
+            ?: return "### ❌ 失败：未找到文件\n路径: `$absolutePath`"
         return runReadAction {
 
             val stringBuilder = StringBuilder()
             val psiManager = PsiManager.getInstance(project)
             val documentManager = PsiDocumentManager.getInstance(project) // 1. 获取 Document 管理器
-            val psiFile = psiManager.findFile(virtualFile) ?: return@runReadAction "文件路径不存在：$filePath 请重试！"
+            val psiFile = psiManager.findFile(virtualFile) ?: return@runReadAction "文件路径不存在：$absolutePath 请重试！"
             val document = documentManager.getDocument(psiFile) // 2. 获取文件的 Document 对象
 
             // 处理包含类定义的文件 (Java 或 Kotlin 类)
@@ -274,8 +287,9 @@ object ProjectFileUtils {
      */
     fun createFileOrDir(project: Project, absolutePath: String, isDirectory: Boolean): VirtualFile? {
         Log.info("调用工具，创建文件或目录")
+        val cleanPath = sanitizePath(absolutePath)
         // 将路径转换为系统无关路径 (处理 Windows 反斜杠问题)
-        val systemIndependentPath = FileUtil.toSystemIndependentName(absolutePath)
+        val systemIndependentPath = FileUtil.toSystemIndependentName(cleanPath)
 
         var result: VirtualFile? = null
 
@@ -311,7 +325,8 @@ object ProjectFileUtils {
      */
     fun deleteFile(project: Project, absolutePath: String): String {
         Log.info("调用工具，根据绝对路径删除文件或目录")
-        val path = FileUtil.toSystemIndependentName(absolutePath)
+        val cleanPath = sanitizePath(absolutePath)
+        val path = FileUtil.toSystemIndependentName(cleanPath)
         // 先尝试在 VFS 中找到这个文件 (需要刷新以确保同步)
         val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByPath(path)
         if (virtualFile == null || !virtualFile.isValid) {
@@ -334,22 +349,23 @@ object ProjectFileUtils {
     /**
      * 根据行号替换文件内容
      * @param project 项目
-     * @param filePath 文件绝对路径
+     * @param absolutePath 文件绝对路径
      * @param startLine 起始行号 (从 1 开始)
      * @param endLine 结束行号 (从 1 开始)
      * @param newCodeString 新的代码
      */
     fun replaceCodeByLine(
         project: Project,
-        filePath: String,
+        absolutePath: String,
         startLine: Int,
         endLine: Int,
         newCodeString: String
     ): String {
         Log.info("调用工具，根据行号替换文件内容")
+        val cleanPath = sanitizePath(absolutePath)
         // 1. 通过绝对路径加载 VirtualFile
-        val virtualFile = LocalFileSystem.getInstance().findFileByPath(filePath)
-            ?: return "### ❌ 失败：未找到文件\n路径: `$filePath`"
+        val virtualFile = LocalFileSystem.getInstance().findFileByPath(cleanPath)
+            ?: return "### ❌ 失败：未找到文件\n路径: `$absolutePath`"
 
         // 2. 自动定位该文件所属的项目
         var resultMessage = ""
@@ -520,8 +536,9 @@ object ProjectFileUtils {
      */
     fun listDirectoryContents(absolutePath: String): String {
         Log.info("调用工具，根据目录的绝对路径获取当前目录下的所有目录 and 文件，使用md格式输出字符串。")
+        val cleanPath = sanitizePath(absolutePath)
         return runReadAction {
-            val path = FileUtil.toSystemIndependentName(absolutePath)
+            val path = FileUtil.toSystemIndependentName(cleanPath)
 
             // 更加健壮的查找逻辑：
             // 1. 如果路径本身包含协议 (如 temp://, file://), 直接通过 URL 查找

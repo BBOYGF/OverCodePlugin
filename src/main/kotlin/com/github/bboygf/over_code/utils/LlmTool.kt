@@ -85,7 +85,7 @@ object GetFileFunInfoTool : LlmTool {
     override val parameters = buildJsonObject {
         put("type", "object")
         put("properties", buildJsonObject {
-            putJsonObject("filePath") {
+            putJsonObject("absolutePath") {
                 put("type", "string")
                 put("description", "文件的绝对路径")
             }
@@ -94,7 +94,7 @@ object GetFileFunInfoTool : LlmTool {
     override val isWriteTool = false
 
     override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
-        val filePath = args["filePath"]?.jsonPrimitive?.content ?: ""
+        val filePath = args["absolutePath"]?.jsonPrimitive?.content ?: ""
         return ProjectFileUtils.getFileFunInfo(project, filePath)
     }
 }
@@ -105,7 +105,7 @@ object GetMethodDetailTool : LlmTool {
     override val parameters = buildJsonObject {
         put("type", "object")
         put("properties", buildJsonObject {
-            putJsonObject("fileName") {
+            putJsonObject("absolutePath") {
                 put("type", "string")
                 put("description", "文件的绝对路径")
             }
@@ -118,7 +118,7 @@ object GetMethodDetailTool : LlmTool {
     override val isWriteTool = false
 
     override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
-        val fileName = args["fileName"]?.jsonPrimitive?.content ?: ""
+        val fileName = args["absolutePath"]?.jsonPrimitive?.content ?: ""
         val methodName = args["methodName"]?.jsonPrimitive?.content ?: ""
         return ProjectFileUtils.getMethodDetail(project, fileName, methodName)
     }
@@ -194,7 +194,7 @@ object ReplaceCodeByLineTool : LlmTool {
     override val parameters = buildJsonObject {
         put("type", "object")
         put("properties", buildJsonObject {
-            putJsonObject("filePath") {
+            putJsonObject("absolutePath") {
                 put("type", "string")
                 put("description", "文件的绝对路径")
             }
@@ -215,11 +215,11 @@ object ReplaceCodeByLineTool : LlmTool {
     override val isWriteTool = true
 
     override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
-        val filePath = args["filePath"]?.jsonPrimitive?.content ?: ""
+        val absolutePath = args["absolutePath"]?.jsonPrimitive?.content ?: ""
         val startLine = args["startLine"]?.jsonPrimitive?.int ?: 0
         val endLine = args["endLine"]?.jsonPrimitive?.int ?: 0
         val newCodeString = args["newCodeString"]?.jsonPrimitive?.content ?: ""
-        return ProjectFileUtils.replaceCodeByLine(project, filePath, startLine, endLine, newCodeString)
+        return ProjectFileUtils.replaceCodeByLine(project, absolutePath, startLine, endLine, newCodeString)
     }
 }
 
