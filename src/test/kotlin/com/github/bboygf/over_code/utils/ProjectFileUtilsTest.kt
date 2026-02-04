@@ -3,10 +3,12 @@ package com.github.bboygf.over_code.utils
 import com.github.bboygf.over_code.utils.ProjectFileUtils.findMethodsByName
 import com.github.bboygf.over_code.utils.ProjectFileUtils.getFileFunInfo
 import com.github.bboygf.over_code.utils.ProjectFileUtils.getMethodDetail
+import com.github.bboygf.over_code.utils.ProjectFileUtils.readFileContent
 import com.github.bboygf.over_code.utils.ProjectFileUtils.replaceCodeByLine
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.testFramework.utils.vfs.getFile
 
 class ProjectFileUtilsTest : BasePlatformTestCase() {
 
@@ -131,4 +133,25 @@ class ProjectFileUtilsTest : BasePlatformTestCase() {
         val fileErrorResult = ProjectFileUtils.listDirectoryContents(filePath)
         assertTrue(fileErrorResult.contains("### ❌ 失败：该路径不是一个目录"))
     }
+
+    /**
+     * 测试读取文件全部内容
+     */
+    fun testReadAllFileContent() {
+        // 1. 准备：将测试数据拷贝到项目中 (myClasses 目录下有 ProjectFileUtils.kt)
+        myFixture.copyDirectoryToProject("myClasses", "src")
+
+        // 2. 定位文件：在 IDEA 测试中，文件路径通常带 temp:// 协议
+        val virtualFile = myFixture.findFileInTempDir("src/ProjectFileUtils.kt")
+        assertNotNull("测试文件 src/ProjectFileUtils.kt 应该存在", virtualFile)
+
+        // 3. 执行读取：使用 virtualFile.url 确保能被 findVirtualFile 识别
+        val content = readFileContent(virtualFile!!.url)
+
+        // 4. 验证断言
+        println("Content read from file:\n$content")
+        assertTrue("内容应包含行号前缀", content.contains("1 | "))
+        assertTrue("内容应包含类名", content.contains("object ProjectFileUtils"))
+    }
+
 }

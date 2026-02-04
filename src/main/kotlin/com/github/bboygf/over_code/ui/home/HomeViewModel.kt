@@ -11,6 +11,8 @@ import com.github.bboygf.over_code.po.GeminiFunctionCall
 import com.github.bboygf.over_code.po.GeminiPart
 import com.github.bboygf.over_code.po.GeminiTool
 import com.github.bboygf.over_code.po.LLMMessage
+import com.github.bboygf.over_code.po.LlmToolCall
+import com.github.bboygf.over_code.po.LlmToolDefinition
 import com.github.bboygf.over_code.services.ChatDatabaseService
 import com.github.bboygf.over_code.vo.ChatMessage
 import com.github.bboygf.over_code.vo.ModelConfigInfo
@@ -33,6 +35,9 @@ import java.util.concurrent.CopyOnWriteArrayList
 import com.github.bboygf.over_code.utils.ImageUtils
 import com.github.bboygf.over_code.utils.ProjectFileUtils
 import com.github.bboygf.over_code.utils.ToolRegistry
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonObject
 
 
 /**
@@ -217,22 +222,24 @@ class HomeViewModel(
 
         // 2. 构建 LLM 历史 (注意：此时 UI 上的 messages 已经包含了 userMessage)
         val llmMessages = chatMessages.mapIndexed { index, msg ->
-
             LLMMessage(
                 role = msg.chatRole.role,
                 content = msg.content,
                 // 只给最后一条用户消息附带图片
-                images = if (msg.chatRole == ChatRole.用户 && index == chatMessages.size - 1) currentImageList else emptyList()
+                images = if (msg.chatRole == ChatRole.用户 && index == chatMessages.size - 1) currentImageList else emptyList(),
+                toolCalls = msg.toolCalls,
+                toolCallId = msg.toolCallId,
+                thought = msg.thought
             )
         }.toMutableList()
 
+
         // 工具定义
         // 使用注册表自动加载工具
+        // 工具定义
         val tools = ToolRegistry.allTools
             .filter { !it.isWriteTool || chatMode == ChatPattern.执行模式 }
-            .map { it.toDeclaration() }
-
-        val geminiTools = listOf(GeminiTool(tools))
+            .map { it.toGenericDefinition() }
 
         currentJob = ioScope.launch {
             // 用于累计最终显示的文本
@@ -241,7 +248,7 @@ class HomeViewModel(
             try {
                 processChatTurn(
                     history = llmMessages,
-                    tools = geminiTools,
+                    tools = tools,
                     contentBuilder = contentBuilder,
                     onScrollToBottom = onScrollToBottom
                 )
@@ -261,13 +268,20 @@ class HomeViewModel(
         }
     }
 
+
     /**
      * 执行工具调用
      */
-    private fun executeTool(functionCall: GeminiFunctionCall): String {
-        val tool = ToolRegistry.allTools.find { it.name == functionCall.name }
-            ?: return "Unknown function: ${functionCall.name}"
-        return tool.execute(project!!, functionCall.args, chatMode)
+    private fun executeTool(functionCall: LlmToolCall): String {
+        val tool = ToolRegistry.allTools.find { it.name == functionCall.functionName }
+            ?: return "Unknown function: ${functionCall.functionName}"
+
+        val argsMap = try {
+            Json.parseToJsonElement(functionCall.arguments).jsonObject
+        } catch (e: Exception) {
+            emptyMap<String, JsonElement>()
+        }
+        return tool.execute(project!!, argsMap, chatMode)
     }
 
 
@@ -308,7 +322,7 @@ class HomeViewModel(
      * 工具执行结果数据类
      */
     data class ToolExecutionResult(
-        val call: GeminiPart,
+        val call: LlmToolCall,
         val result: String
     )
 
@@ -319,12 +333,11 @@ class HomeViewModel(
      */
     private suspend fun processChatTurn(
         history: MutableList<LLMMessage>,
-        tools: List<GeminiTool>,
+        tools: List<LlmToolDefinition>,
         contentBuilder: StringBuilder,
         onScrollToBottom: () -> Unit
     ) {
-        val partList = CopyOnWriteArrayList<GeminiPart>()
-        val currentTurnText = StringBuilder()
+        val callList = CopyOnWriteArrayList<LlmToolCall>()
         val currentThought = StringBuilder()
 
         val service = llmService ?: run {
@@ -339,21 +352,19 @@ class HomeViewModel(
             onChunk = { chunk ->
                 if (chunk.isNotEmpty()) {
                     contentBuilder.append(chunk)
-                    currentTurnText.append(chunk)
                     onScrollToBottom()
                 }
             },
             onToolCall = { call ->
-                partList.add(call)
+                callList.add(call)
             },
             onThought = { thought ->
                 currentThought.append(thought)
-            },
+            }
         )
 
         // 如果没有工具调用，直接返回
-        if (partList.isEmpty()) {
-            // 即使没有工具调用，也需要保存 AI 的文本回复
+        if (callList.isEmpty()) {
             val responseText = contentBuilder.toString()
             if (responseText.isNotEmpty()) {
                 val aiMessage = ChatMessage(
@@ -369,66 +380,66 @@ class HomeViewModel(
             return
         }
 
-        // 显示 AI 正在调用工具的提示
-        val toolCallDescription = partList.map {
-            "${it.functionCall?.name}: ${it.functionCall?.args}"
-        }.joinToString("\n")
+        // 构造工具调用提示
+        val toolCallDescription = callList.joinToString("\n") {
+            "${it.functionName}: ${it.arguments}"
+        }
+
         val assistantMessage = ChatMessage(
             id = System.currentTimeMillis().toString(),
-            content = "并行调用工具:\n$toolCallDescription",
+            content = "parallel calling tools:\n$toolCallDescription",
             chatRole = ChatRole.助理,
-            thought = currentThought.toString().takeIf { it.isNotEmpty() }
+            thought = currentThought.toString().takeIf { it.isNotEmpty() },
         )
         chatMessages = chatMessages + assistantMessage
         dbService?.saveMessage(assistantMessage)
         uiScope.launch { onScrollToBottom() }
 
-        // 【关键修改】并行执行所有工具调用
+        // 并行执行工具
         val toolResults = ioScope.async {
-            partList.map { call ->
+            callList.map { call ->
                 async(Dispatchers.IO) {
-                    val result = executeTool(call.functionCall!!)
+                    val result = executeTool(call)
                     ToolExecutionResult(call, result)
                 }
             }.awaitAll()
         }.await()
 
-        // 从 toolCalls 中提取 thoughtSignature（取第一个非空的）
-        val currentThoughtSignature = partList.firstOrNull { it.thoughtSignature != null }?.thoughtSignature
-
-        // 将批量函数调用添加到历史，保留每个 part 的 thoughtSignature
+        // 添加 assistant 消息到历史 (包含 toolCalls)
         history.add(
             LLMMessage(
                 role = "assistant",
-                content = currentTurnText.toString(),
-                parts = partList.toList(),
+                content = contentBuilder.toString(),
+                toolCalls = callList.toList(),
                 thought = currentThought.toString().takeIf { it.isNotEmpty() },
-                thoughtSignature = currentThoughtSignature
             )
         )
 
-        // 将所有工具结果一起添加到历史
+        // 添加所有工具结果到历史和 UI
         toolResults.forEach { result ->
             history.add(
                 LLMMessage(
-                    role = "function",
-                    name = result.call.functionCall!!.name,
+                    role = "tool",
+                    toolCallId = result.call.id,
+                    name = result.call.functionName,
                     content = result.result
                 )
             )
 
-            // 保存工具结果到 UI
             val toolsMessage = ChatMessage(
                 id = System.currentTimeMillis().toString(),
                 content = result.result,
-                chatRole = ChatRole.工具
+                chatRole = ChatRole.工具,
+                toolCallId = result.call.id
             )
             chatMessages = chatMessages + toolsMessage
             dbService?.saveMessage(toolsMessage, currentSessionId)
             uiScope.launch { onScrollToBottom() }
         }
 
-        // 【关键修改】一次性递归，让模型看到所有结果后再决定下一步
+        contentBuilder.setLength(0)
+
+        // 递归进入下一轮
         processChatTurn(
             history = history,
             tools = tools,
@@ -436,7 +447,6 @@ class HomeViewModel(
             onScrollToBottom = onScrollToBottom
         )
     }
-
 
     /**
      * 复制文本到剪贴板
@@ -453,7 +463,6 @@ class HomeViewModel(
         val currentProject = project ?: return
         val editor = FileEditorManager.getInstance(currentProject).selectedTextEditor ?: return
         WriteCommandAction.runWriteCommandAction(currentProject) {
-            // 一行代码搞定：插入字符串，自动处理光标移动和选区替换
             EditorModificationUtil.insertStringAtCaret(editor, code)
         }
     }
@@ -462,9 +471,7 @@ class HomeViewModel(
      * 添加项目索引
      */
     fun addProjectIndex() {
-        if (project == null) {
-            return
-        }
+        if (project == null) return
         ioScope.launch {
             val projectIndexMsg = ProjectFileUtils.exportToMarkdown(project)
             val currentText = getInputText?.invoke() ?: ""

@@ -10,7 +10,8 @@ data class GeminiRequest(
     val contents: List<GeminiContent>,
     val generationConfig: GeminiGenerationConfig? = null,
     val tools: List<GeminiTool>? = null,
-    val toolConfig: GeminiToolConfig? = null
+    val toolConfig: GeminiToolConfig? = null,
+    val systemInstruction: GeminiContent? = null
 )
 
 @Serializable

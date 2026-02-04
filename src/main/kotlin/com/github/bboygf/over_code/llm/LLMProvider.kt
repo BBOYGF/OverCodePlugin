@@ -1,9 +1,8 @@
 package com.github.bboygf.over_code.llm
 
-import com.github.bboygf.over_code.po.GeminiFunctionCall
-import com.github.bboygf.over_code.po.GeminiPart
-import com.github.bboygf.over_code.po.GeminiTool
 import com.github.bboygf.over_code.po.LLMMessage
+import com.github.bboygf.over_code.po.LlmToolCall
+import com.github.bboygf.over_code.po.LlmToolDefinition
 
 
 /**
@@ -15,8 +14,8 @@ interface LLMProvider {
     suspend fun chatStream(
         messages: List<LLMMessage>,
         onChunk: (String) -> Unit,
-        onToolCall: ((GeminiPart) -> Unit)? = null,
-        tools: List<GeminiTool>?,
+        onToolCall: ((LlmToolCall) -> Unit)?,
+        tools: List<LlmToolDefinition>?,
         onThought: ((String) -> Unit)? = null
     )
 }
@@ -25,3 +24,4 @@ interface LLMProvider {
  * LLM 异常
  */
 class LLMException(message: String, cause: Throwable? = null) : Exception(message, cause)
+

@@ -1,6 +1,6 @@
 package com.github.bboygf.over_code.utils
 
-import com.github.bboygf.over_code.po.GeminiFunctionDeclaration
+import com.github.bboygf.over_code.po.LlmToolDefinition
 import com.intellij.openapi.project.Project
 import kotlinx.serialization.json.*
 import com.github.bboygf.over_code.enums.ChatPattern
@@ -16,10 +16,11 @@ interface LlmTool {
 
     fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String
 
-    fun toDeclaration(): GeminiFunctionDeclaration {
-        return GeminiFunctionDeclaration(name, description, parameters)
+    fun toGenericDefinition(): LlmToolDefinition {
+        return LlmToolDefinition(name, description, parameters)
     }
 }
+
 
 object GetProjectInfoTool : LlmTool {
     override val name = "get_project_info"
@@ -190,7 +191,7 @@ object CreateFileOrDirTool : LlmTool {
 
 object ReplaceCodeByLineTool : LlmTool {
     override val name = "replace_code_by_line"
-    override val description = "根据文件名、起始行号、终止行号替换文件内容。（如果不确定行号请先获取行）"
+    override val description = "根据文件名、起始行号、终止行号替换文件内容，（如果不确定行号请先获取行）请不要并行修改，防止修改同一个文件导致行号不读。"
     override val parameters = buildJsonObject {
         put("type", "object")
         put("properties", buildJsonObject {
@@ -216,11 +217,16 @@ object ReplaceCodeByLineTool : LlmTool {
 
     override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
         val absolutePath = args["absolutePath"]?.jsonPrimitive?.content ?: ""
-        val startLine = args["startLine"]?.jsonPrimitive?.int ?: 0
-        val endLine = args["endLine"]?.jsonPrimitive?.int ?: 0
+        val startLine = args["startLine"]?.jsonPrimitive?.let {
+            it.intOrNull ?: it.content.toIntOrNull()
+        } ?: 0
+        val endLine = args["endLine"]?.jsonPrimitive?.let {
+            it.intOrNull ?: it.content.toIntOrNull()
+        } ?: 0
         val newCodeString = args["newCodeString"]?.jsonPrimitive?.content ?: ""
         return ProjectFileUtils.replaceCodeByLine(project, absolutePath, startLine, endLine, newCodeString)
     }
+
 }
 
 object DeleteFileTool : LlmTool {
@@ -267,8 +273,12 @@ object ReadFileRangeTool : LlmTool {
 
     override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
         val path = args["absolutePath"]?.jsonPrimitive?.content ?: ""
-        val startLine = args["startLine"]?.jsonPrimitive?.int ?: 1
-        val endLine = args["endLine"]?.jsonPrimitive?.int ?: 1
+        val startLine = args["startLine"]?.jsonPrimitive?.let {
+            it.intOrNull ?: it.content.toIntOrNull()
+        } ?: 1
+        val endLine = args["endLine"]?.jsonPrimitive?.let {
+            it.intOrNull ?: it.content.toIntOrNull()
+        } ?: 1
         return ProjectFileUtils.readFileRange(path, startLine, endLine)
     }
 }
