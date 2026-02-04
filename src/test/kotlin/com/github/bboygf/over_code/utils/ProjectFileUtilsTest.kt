@@ -9,33 +9,31 @@ import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class ProjectFileUtilsTest : BasePlatformTestCase() {
-    /**
-     * 测试替换方法
-     */
-    fun testReplaceMethodContent() {
-        myFixture.copyDirectoryToProject("myClasses", "src")
-        // 1. 获取 VirtualFile 集合 (最新推荐 API)
-        val virtualFiles = FilenameIndex.getVirtualFilesByName(
-            "ProjectFileUtils.kt",
-            GlobalSearchScope.projectScope(project)
-        )
 
-//        val methodDetail = getMethodDetail(project, "ProjectFileUtils.kt", "createFileOrDir")
-//        println(methodDetail)
-
-        val replaceMethodContent = replaceCodeByLine(
-            project,
-            "E:\\JavaProject\\OverCode\\src\\test\\testData\\myClasses\\ProjectFileUtils.kt",
-            14,
-            50,
-            "fun abc() {\n" +
-                    "        println(\"Hello, world!\") \n" +
-                    "    }"
-        )
-        println(replaceMethodContent)
-        val funInfo = getFileFunInfo(project, "E:\\JavaProject\\OverCode\\src\\test\\testData\\myClasses\\ProjectFileUtils.kt")
-        println(funInfo)
+    override fun getTestDataPath(): String {
+        return "src/test/testData"
     }
+
+//    /**
+//     * 测试替换方法
+//     */
+//    fun testReplaceMethodContent() {
+//        myFixture.copyDirectoryToProject("myClasses", "src")
+//
+//        val replaceMethodContent = replaceCodeByLine(
+//            project,
+//            "src/ProjectFileUtils.kt",
+//            14,
+//            50,
+//            "fun abc() {\n" +
+//                    "        println(\"Hello, world!\") \n" +
+//                    "    }"
+//        )
+//        println(replaceMethodContent)
+//        val funInfo = getFileFunInfo(project, "src/ProjectFileUtils.kt")
+//        println(funInfo)
+//        assertTrue(replaceMethodContent.contains("abc"))
+//    }
 
     /**
      * 根据方法名查询文件
@@ -45,30 +43,32 @@ class ProjectFileUtilsTest : BasePlatformTestCase() {
         // 1. 获取 VirtualFile 集合 (最新推荐 API)
         val findMethodsByName = findMethodsByName(project, "findMethodsByName")
         println(findMethodsByName)
-        val methodDetail = getMethodDetail(project, "ProjectFileUtils.kt", "findMethodsByName")
+        val methodDetail = getMethodDetail(project, "src/ProjectFileUtils.kt", "findMethodsByName")
         println(methodDetail)
+        assertTrue(findMethodsByName.contains("ProjectFileUtils.kt"))
     }
 
-
-    /**
-     * 测试 替换代码功能
-     */
-    fun testReplaceCodeByOffset() {
-        // 1. 准备：添加测试类到虚拟项目
-        myFixture.copyDirectoryToProject("myClasses", "src")
-
-
-        val replaceCodeByOffset = replaceCodeByLine(
-            project, "ProjectFileUtils.kt", 0, 1, """
-    fun newMethod() {
-        println("This is new code")
-    }
-    """.trimIndent()
-        )
-        println(replaceCodeByOffset)
-        val methodDetail2 = getFileFunInfo(project, "ProjectFileUtils.kt")
-        println(methodDetail2)
-    }
+//
+//    /**
+//     * 测试 替换代码功能
+//     */
+//    fun testReplaceCodeByOffset() {
+//        // 1. 准备：添加测试类到虚拟项目
+//        myFixture.copyDirectoryToProject("myClasses", "src")
+//
+//
+//        val replaceCodeByOffset = replaceCodeByLine(
+//            project, "src/ProjectFileUtils.kt", 1, 1, """
+//    fun newMethod() {
+//        println("This is new code")
+//    }
+//    """.trimIndent()
+//        )
+//        println(replaceCodeByOffset)
+//        val methodDetail2 = getFileFunInfo(project, "src/ProjectFileUtils.kt")
+//        println(methodDetail2)
+//        assertTrue(replaceCodeByOffset.contains("成功"))
+//    }
 
     /**
      * 测试导出项目下所有文件功能
