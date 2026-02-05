@@ -31,9 +31,34 @@ object ProjectFileUtils {
      * 清理路径
      */
     private fun sanitizePath(path: String): String {
-        val clean = path.replace(Regex("<ctrl\\d+>"), "").trim()
+        val clean = path.replace("`", "")// 移除反引号
+            .replace("\"", "")  // 移除双引号
+            .replace(Regex("<ctrl\\d+>"), "")  // 修正后的正则，移除控制序列
+            .trim()
         return FileUtil.toSystemIndependentName(clean)
     }
+
+    /**
+     * 内部辅助方法：统一查找 VirtualFile 的逻辑，支持普通路径、URL 和测试环境路径
+     */
+    private fun findVirtualFile(pathOrUrl: String): VirtualFile? {
+        val path = sanitizePath(pathOrUrl)
+        if (path.isEmpty()) return null
+
+        val file = when {
+            path.contains("://") -> VirtualFileManager.getInstance().findFileByUrl(path)
+            else -> {
+                LocalFileSystem.getInstance().refreshAndFindFileByPath(path)
+                    ?: VirtualFileManager.getInstance().findFileByUrl("temp://$path")
+                    ?: VirtualFileManager.getInstance().findFileByUrl(VfsUtilCore.pathToUrl(path))
+            }
+        }
+        if (file == null) {
+            Log.error("未找到文件，原始路径: $pathOrUrl, 清理后路径: $path")
+        }
+        return file
+    }
+
 
     /**
      * 获取项目下所有文件的列表，并生成 Markdown 格式字符串
@@ -75,7 +100,7 @@ object ProjectFileUtils {
         // 1. 检查文件是否在“排除列表”中（如 build, target 等目录下的文件）
         if (fileIndex.isExcluded(file)) return false
 
-        // 2. 检查是否属于库文件或编译后的 class 文件（排除 jar 包和依赖库源码）
+        // 2. 检查是否属于库文件或编译后的 class 文件（排除 jar 包 and 依赖库源码）
         if (fileIndex.isInLibraryClasses(file) || fileIndex.isInLibrarySource(file)) return false
 
         // 3. 基础过滤：排除特定后缀
@@ -94,10 +119,7 @@ object ProjectFileUtils {
     fun readFileContent(absolutePath: String): String {
         return try {
             Log.info("调用工具，根据文件路径读取文件内容: $absolutePath")
-            val cleanPath = sanitizePath(absolutePath)
-
-            val path = FileUtil.toSystemIndependentName(cleanPath)
-            val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByPath(path)
+            val virtualFile = findVirtualFile(absolutePath)
 
             if (virtualFile == null || virtualFile.isDirectory) {
                 return "读取失败：文件不存在或路径是目录！"
@@ -110,7 +132,8 @@ object ProjectFileUtils {
             }
 
             runReadAction {
-                val rawContent = VfsUtil.loadText(virtualFile)
+                val document = FileDocumentManager.getInstance().getDocument(virtualFile)
+                val rawContent = document?.text ?: VfsUtil.loadText(virtualFile)
                 val lines = rawContent.lines()
 
                 // 2. 使用 StringBuilder 减少内存碎片的产生
@@ -120,6 +143,7 @@ object ProjectFileUtils {
                 }
                 result.toString()
             }
+
         } catch (e: Throwable) {
             // 3. 捕获所有异常，确保工具调用流程不会中断
             val errorMsg = "读取文件时发生意外错误: ${e.message}"
@@ -139,16 +163,15 @@ object ProjectFileUtils {
     fun readFileRange(absolutePath: String, startLine: Int, endLine: Int): String {
         return try {
             Log.info("调用工具，根据范围读取文件内容: $absolutePath ($startLine - $endLine)")
-            val cleanPath = sanitizePath(absolutePath)
-            val path = FileUtil.toSystemIndependentName(cleanPath)
-            val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByPath(path)
+            val virtualFile = findVirtualFile(absolutePath)
 
             if (virtualFile == null || virtualFile.isDirectory) {
                 return "读取失败：文件不存在或路径是目录！"
             }
 
             runReadAction {
-                val rawContent = VfsUtil.loadText(virtualFile)
+                val document = FileDocumentManager.getInstance().getDocument(virtualFile)
+                val rawContent = document?.text ?: VfsUtil.loadText(virtualFile)
                 val lines = rawContent.lines()
 
                 val result = StringBuilder()
@@ -156,7 +179,7 @@ object ProjectFileUtils {
                 val actualEnd = (endLine - 1).coerceAtMost(lines.size - 1)
 
                 if (actualStart > actualEnd) {
-                    return@runReadAction "读取失败：起始行号 $startLine 大于终止行号 $endLine 或超出范围"
+                    return@runReadAction "读取失败：起始行号 $startLine 大于终止行号 $endLine 或超出范围 (当前文件共 ${lines.size} 行)"
                 }
 
                 for (i in actualStart..actualEnd) {
@@ -164,6 +187,7 @@ object ProjectFileUtils {
                 }
                 result.toString()
             }
+
         } catch (e: Throwable) {
             val errorMsg = "范围读取文件时发生意外错误: ${e.message}"
             Log.error(errorMsg, e)
@@ -178,10 +202,9 @@ object ProjectFileUtils {
      * @param absolutePath 文件名
      */
     fun getFileFunInfo(project: Project, absolutePath: String): String {
-        val cleanPath = sanitizePath(absolutePath)
         Log.info("调用工具，根据文件获取文件内所有方法详情（返回行号信息）")
-        val virtualFile = LocalFileSystem.getInstance().findFileByPath(cleanPath)
-            ?: return "### ❌ 失败：未找到文件\n路径: `$cleanPath`"
+        val virtualFile = findVirtualFile(absolutePath)
+            ?: return "### ❌ 失败：未找到文件\n路径: `$absolutePath`"
 
         return runReadAction {
             val stringBuilder = StringBuilder()
@@ -231,16 +254,16 @@ object ProjectFileUtils {
      * @param methodName 要查找的方法名
      */
     fun getMethodDetail(project: Project, absolutePath: String, methodName: String): String {
-        val cleanPath = sanitizePath(absolutePath)
         Log.info("调用工具，根据文件名和方法名获取特定方法的详情")
-        val virtualFile = LocalFileSystem.getInstance().findFileByPath(cleanPath)
+        val virtualFile = findVirtualFile(absolutePath)
             ?: return "### ❌ 失败：未找到文件\n路径: `$absolutePath`"
         return runReadAction {
 
             val stringBuilder = StringBuilder()
             val psiManager = PsiManager.getInstance(project)
             val documentManager = PsiDocumentManager.getInstance(project) // 1. 获取 Document 管理器
-            val psiFile = psiManager.findFile(virtualFile) ?: return@runReadAction "文件路径不存在：$absolutePath 请重试！"
+            val psiFile =
+                psiManager.findFile(virtualFile) ?: return@runReadAction "文件路径不存在：$absolutePath 请重试！"
             val document = documentManager.getDocument(psiFile) // 2. 获取文件的 Document 对象
 
             // 处理包含类定义的文件 (Java 或 Kotlin 类)
@@ -325,10 +348,9 @@ object ProjectFileUtils {
      */
     fun deleteFile(project: Project, absolutePath: String): String {
         Log.info("调用工具，根据绝对路径删除文件或目录")
-        val cleanPath = sanitizePath(absolutePath)
-        val path = FileUtil.toSystemIndependentName(cleanPath)
+        val path = sanitizePath(absolutePath)
         // 先尝试在 VFS 中找到这个文件 (需要刷新以确保同步)
-        val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByPath(path)
+        val virtualFile = findVirtualFile(path)
         if (virtualFile == null || !virtualFile.isValid) {
             return "没有找到这个文件：$absolutePath"
         }
@@ -362,9 +384,8 @@ object ProjectFileUtils {
         newCodeString: String
     ): String {
         Log.info("调用工具，根据行号替换文件内容")
-        val cleanPath = sanitizePath(absolutePath)
         // 1. 通过绝对路径加载 VirtualFile
-        val virtualFile = LocalFileSystem.getInstance().findFileByPath(cleanPath)
+        val virtualFile = findVirtualFile(absolutePath)
             ?: return "### ❌ 失败：未找到文件\n路径: `$absolutePath`"
 
         // 2. 自动定位该文件所属的项目
@@ -414,7 +435,7 @@ object ProjectFileUtils {
                 resultMessage = "### ✅ 成功：已更新文件 [${virtualFile.name}]\n" +
                         "- 修改范围: 行 $startLine 到 $endLine\n" +
                         "- 当前总行数: ${document.lineCount}\n" +
-                        "\n⚠️ 注意：建议重新调用读取接口获取最新行号。"
+                        "\n⚠️ 注意：修改后请务必使用相关工具检查代码是否报错。"
 
             } catch (e: Exception) {
                 resultMessage = "### 💥 异常：修改过程中发生错误\n内容: ${e.message}"
@@ -536,22 +557,8 @@ object ProjectFileUtils {
      */
     fun listDirectoryContents(absolutePath: String): String {
         Log.info("调用工具，根据目录的绝对路径获取当前目录下的所有目录 and 文件，使用md格式输出字符串。")
-        val cleanPath = sanitizePath(absolutePath)
         return runReadAction {
-            val path = FileUtil.toSystemIndependentName(cleanPath)
-
-            // 更加健壮的查找逻辑：
-            // 1. 如果路径本身包含协议 (如 temp://, file://), 直接通过 URL 查找
-            // 2. 如果是普通路径，优先尝试本地文件系统
-            // 3. 如果本地找不到且以 / 开头，尝试补充 temp:// 协议（兼容测试环境）
-            val virtualFile = when {
-                path.contains("://") -> VirtualFileManager.getInstance().findFileByUrl(path)
-                else -> {
-                    LocalFileSystem.getInstance().refreshAndFindFileByPath(path)
-                        ?: VirtualFileManager.getInstance().findFileByUrl("temp://$path")
-                        ?: VirtualFileManager.getInstance().findFileByUrl(VfsUtilCore.pathToUrl(path))
-                }
-            }
+            val virtualFile = findVirtualFile(absolutePath)
 
             if (virtualFile == null || !virtualFile.exists()) {
                 return@runReadAction "### ❌ 失败：路径不存在\n路径: `$absolutePath`"
@@ -596,10 +603,18 @@ object ProjectFileUtils {
         val wolf = WolfTheProblemSolver.getInstance(project)
         val errorFiles = mutableListOf<VirtualFile>()
 
-        // 1. 快速筛选：利用 WolfInternal 获取当前项目中已知有错的文件
+        // 1. 全面扫描：遍历项目文件，结合 Wolf 和 PSI 检查
         ProjectFileIndex.getInstance(project).iterateContent { virtualFile ->
-            if (!virtualFile.isDirectory && wolf.isProblemFile(virtualFile)) {
-                errorFiles.add(virtualFile)
+            if (shouldInclude(virtualFile, project)) {
+                if (wolf.isProblemFile(virtualFile)) {
+                    errorFiles.add(virtualFile)
+                } else {
+                    val hasError = runReadAction {
+                        val psiFile = PsiManager.getInstance(project).findFile(virtualFile)
+                        psiFile != null && com.intellij.psi.util.PsiTreeUtil.hasErrorElements(psiFile)
+                    }
+                    if (hasError) errorFiles.add(virtualFile)
+                }
             }
             true
         }
@@ -700,7 +715,7 @@ object ProjectFileUtils {
      * @return Markdown 格式的字符串报告
      */
     fun reviewCodeByFile(project: Project, filePath: String): String {
-        val virtualFile = LocalFileSystem.getInstance().findFileByPath(filePath)
+        val virtualFile = findVirtualFile(filePath)
             ?: return "### ❌ 文件未找到\n路径: `$filePath`"
         return reviewSingleFileInternal(project, virtualFile)
     }
