@@ -1,17 +1,19 @@
 package com.github.bboygf.over_code.services
 
-import com.github.bboygf.over_code.enums.ChatRole
 import com.github.bboygf.over_code.po.ChatMessages
 import com.github.bboygf.over_code.po.ChatSessions
 import com.github.bboygf.over_code.po.ModelConfigs
 import com.github.bboygf.over_code.po.OtherConfigs
 import com.github.bboygf.over_code.po.PromptTemplates
-import com.github.bboygf.over_code.vo.ChatMessage
+import com.github.bboygf.over_code.vo.ChatMessageVo
 import com.github.bboygf.over_code.vo.ModelConfigInfo
 import com.github.bboygf.over_code.vo.PromptInfo
 import com.github.bboygf.over_code.vo.SessionInfo
+import com.github.bboygf.over_code.po.LlmToolCall
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -55,7 +57,7 @@ class ChatDatabaseService(private val project: Project) {
     /**
      * 保存消息到数据库
      */
-    fun saveMessage(message: ChatMessage, sessionId: String = "default") {
+    fun saveMessage(message: ChatMessageVo, sessionId: String = "default") {
         transaction(database) {
             ChatMessages.insert {
                 it[messageId] = message.id
@@ -64,6 +66,10 @@ class ChatDatabaseService(private val project: Project) {
                 it[timestamp] = message.timestamp
                 it[ChatMessages.sessionId] = sessionId
                 it[thought] = message.thought
+                it[toolCalls] = message.toolCalls?.let { calls -> Json.encodeToString(calls) }
+                it[toolCallId] = message.toolCallId
+                it[thoughtSignature] = message.thoughtSignature
+                it[images] = if (message.images.isNotEmpty()) Json.encodeToString(message.images) else null
             }
 
             updateSessionTimestamp(sessionId)
@@ -73,7 +79,7 @@ class ChatDatabaseService(private val project: Project) {
     /**
      * 批量保存消息
      */
-    fun saveMessages(messages: List<ChatMessage>, sessionId: String = "default") {
+    fun saveMessages(messages: List<ChatMessageVo>, sessionId: String = "default") {
         transaction(database) {
             messages.forEach { message ->
                 ChatMessages.insert {
@@ -81,8 +87,12 @@ class ChatDatabaseService(private val project: Project) {
                     it[content] = message.content
                     it[chatRole] = message.chatRole
                     it[timestamp] = message.timestamp
-                    it[ChatMessages.sessionId] = sessionId
+                it[ChatMessages.sessionId] = sessionId
                     it[thought] = message.thought
+                    it[toolCalls] = message.toolCalls?.let { calls -> Json.encodeToString(calls) }
+                    it[toolCallId] = message.toolCallId
+                    it[thoughtSignature] = message.thoughtSignature
+                    it[images] = if (message.images.isNotEmpty()) Json.encodeToString(message.images) else null
                 }
             }
             updateSessionTimestamp(sessionId)
@@ -92,18 +102,25 @@ class ChatDatabaseService(private val project: Project) {
     /**
      * 加载指定会话的所有消息
      */
-    fun loadMessages(sessionId: String = "default"): List<ChatMessage> {
+    fun loadMessages(sessionId: String = "default"): List<ChatMessageVo> {
         return transaction(database) {
             ChatMessages.selectAll()
                 .where { ChatMessages.sessionId eq sessionId }
                 .orderBy(ChatMessages.timestamp to SortOrder.ASC)
                 .map { row ->
-                    ChatMessage(
+                    val toolCallsJson = row[ChatMessages.toolCalls]
+                    val imagesJson = row[ChatMessages.images]
+
+                    ChatMessageVo(
                         id = row[ChatMessages.messageId],
                         content = row[ChatMessages.content],
                         chatRole = row[ChatMessages.chatRole],
                         timestamp = row[ChatMessages.timestamp],
-                        thought = row[ChatMessages.thought]
+                        thought = row[ChatMessages.thought],
+                        toolCalls = toolCallsJson?.let { Json.decodeFromString<List<LlmToolCall>>(it) },
+                        toolCallId = row[ChatMessages.toolCallId],
+                        thoughtSignature = row[ChatMessages.thoughtSignature],
+                        images = imagesJson?.let { Json.decodeFromString<List<String>>(it) } ?: emptyList()
                     )
                 }
         }

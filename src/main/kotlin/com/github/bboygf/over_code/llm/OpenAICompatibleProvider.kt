@@ -1,6 +1,7 @@
 package com.github.bboygf.over_code.llm
 
 import com.github.bboygf.over_code.po.*
+import com.github.bboygf.over_code.utils.Log
 import com.intellij.openapi.diagnostic.thisLogger
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -23,6 +24,7 @@ import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readUTF8Line
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 
 /**
@@ -72,13 +74,16 @@ class OpenAICompatibleProvider(
                 model = model,
                 messages = messages.map { it.toOpenAIMessage() },
                 stream = false
-            )
+            ).also {
+                Log.info("OpenAI Request: ${Json.encodeToString(it)}")
+            }
             try {
                 val response: OpenAIResponse = client.post("$baseUrl/chat/completions") {
                     header("Authorization", "Bearer $apiKey")
                     contentType(ContentType.Application.Json)
                     setBody(requestBody)
                 }.body()
+                Log.info("OpenAI Response: ${Json.encodeToString(response)}")
                 val content: String = response.choices.first().message?.getContentString() ?: ""
                 return@withContext content
             } catch (e: Exception) {
@@ -101,7 +106,9 @@ class OpenAICompatibleProvider(
                 stream = true,
                 tools = tools?.map { OpenAITool(function = OpenAIFunction(it.name, it.description, it.parameters)) },
                 tool_choice = if (tools != null) "auto" else null
-            )
+            ).also {
+                Log.info("OpenAI Request: ${Json.encodeToString(it)}")
+            }
             try {
                 client.preparePost("$baseUrl/chat/completions") {
                     header("Authorization", "Bearer $apiKey")
@@ -118,6 +125,7 @@ class OpenAICompatibleProvider(
 
                     while (!channel.isClosedForRead) {
                         var line = channel.readUTF8Line() ?: break
+                        Log.info("OpenAI Response: $line")
                         if (line.isBlank()) continue
                         if (line.startsWith(":")) continue
                         if (line.startsWith("data: ")) line = line.removePrefix("data: ")
@@ -177,7 +185,7 @@ class OpenAICompatibleProvider(
                         role = role,
                         content = JsonPrimitive(content),
                         tool_calls = toolCalls?.map {
-                            OpenAIToolCall(it.id, function = FunctionCallDetail(it.functionName, it.arguments))
+                            OpenAIToolCall(id = it.id ?: "", function = FunctionCallDetail(it.functionName, it.arguments))
                         }
                     )
                 } else {

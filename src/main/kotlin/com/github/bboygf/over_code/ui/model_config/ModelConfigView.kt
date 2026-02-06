@@ -278,7 +278,7 @@ fun ModelConfigDialog(
     var showProviderMenu by remember { mutableStateOf(false) }
     var useProxy by remember { mutableStateOf(config?.useProxy ?: false) }
 
-    val providers = listOf("openai", "gemini", "ollama", "zhipu", "qwen", "deepseek", "moonshot", "custom")
+    val providers = listOf("openai", "gemini","minmax", "ollama", "zhipu", "qwen", "deepseek", "moonshot", "custom","anthropic")
 
     // 预设配置
     LaunchedEffect(provider) {

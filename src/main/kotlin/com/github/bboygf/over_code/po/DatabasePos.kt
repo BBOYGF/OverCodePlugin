@@ -16,6 +16,10 @@ object ChatMessages : IntIdTable("chat_messages") {
     val timestamp = long("timestamp")
     val sessionId = varchar("session_id", 50).default("default")
     val thought = text("thought").nullable()
+    val toolCalls = text("tool_calls").nullable() // JSON string of List<LlmToolCall>
+    val toolCallId = text("tool_call_id").nullable()
+    val thoughtSignature = text("thought_signature").nullable()
+    val images = text("images").nullable() // JSON string of List<String>
 }
 
 /**

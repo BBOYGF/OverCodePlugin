@@ -2,6 +2,7 @@ package com.github.bboygf.over_code.utils
 
 import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx
 import com.intellij.lang.annotation.HighlightSeverity
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.editor.Document
@@ -596,45 +597,43 @@ object ProjectFileUtils {
      * 检查整个项目是否有爆红，并返回 Markdown 格式的报告
      */
     fun inspectProjectErrors(project: Project): String {
-        Log.info("调用工具，检查整个项目是否有爆红，并返回 Markdown 格式的报告")
         val sb = StringBuilder()
         sb.append("# 🚀 项目代码质量扫描报告\n\n")
 
-        val wolf = WolfTheProblemSolver.getInstance(project)
-        val errorFiles = mutableListOf<VirtualFile>()
+        // 确保在 Read Action 中执行，防止 AccessDeniedException
+        return ApplicationManager.getApplication().runReadAction<String> {
+            val wolf = WolfTheProblemSolver.getInstance(project)
+            val errorFiles = mutableListOf<VirtualFile>()
 
-        // 1. 全面扫描：遍历项目文件，结合 Wolf 和 PSI 检查
-        ProjectFileIndex.getInstance(project).iterateContent { virtualFile ->
-            if (shouldInclude(virtualFile, project)) {
-                if (wolf.isProblemFile(virtualFile)) {
-                    errorFiles.add(virtualFile)
-                } else {
-                    val hasError = runReadAction {
+            ProjectFileIndex.getInstance(project).iterateContent { virtualFile ->
+                // 1. 过滤逻辑：只检查源码，排除 library 和忽略的文件
+                if (!virtualFile.isDirectory && shouldInclude(virtualFile, project)) {
+
+                    // 2. 综合判断：Wolf 标记或 PSI 语法错误
+                    val hasError = wolf.isProblemFile(virtualFile) || run {
                         val psiFile = PsiManager.getInstance(project).findFile(virtualFile)
                         psiFile != null && com.intellij.psi.util.PsiTreeUtil.hasErrorElements(psiFile)
                     }
+
                     if (hasError) errorFiles.add(virtualFile)
                 }
+                true
             }
-            true
+
+            if (errorFiles.isEmpty()) {
+                sb.append("### ✅ 完美！\n项目内未发现任何爆红文件 (ERROR 级别)。\n")
+            } else {
+                sb.append("### 📊 概览\n")
+                sb.append("- 异常文件总数: **${errorFiles.size}**\n\n---\n\n")
+
+                errorFiles.forEach { file ->
+                    // 注意：reviewSingleFileInternal 内部也必须处理好读锁
+                    val fileReport = reviewSingleFileInternal(project, file)
+                    sb.append(fileReport).append("\n\n---\n\n")
+                }
+            }
+            sb.toString()
         }
-
-        if (errorFiles.isEmpty()) {
-            sb.append("### ✅ 完美！\n项目内未发现任何爆红文件 (ERROR 级别)。\n")
-            return sb.toString()
-        }
-
-        sb.append("### 📊 概览\n")
-        sb.append("- 异常文件总数: **${errorFiles.size}**\n\n")
-        sb.append("---\n\n")
-
-        // 2. 遍历有错的文件，生成详细报告
-        errorFiles.forEach { file ->
-            val fileReport = reviewSingleFileInternal(project, file)
-            sb.append(fileReport).append("\n\n---\n\n")
-        }
-
-        return sb.toString()
     }
 
     /**

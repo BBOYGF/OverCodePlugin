@@ -1,6 +1,7 @@
 package com.github.bboygf.over_code.llm
 
 import com.github.bboygf.over_code.po.*
+import com.github.bboygf.over_code.utils.Log
 import com.intellij.openapi.diagnostic.thisLogger
 import io.ktor.client.*
 import io.ktor.client.call.*
@@ -16,6 +17,7 @@ import io.ktor.utils.io.CancellationException
 import io.ktor.utils.io.readUTF8Line
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 
 /**
@@ -47,11 +49,14 @@ class OllamaProvider(
                     model = model,
                     messages = messages.map { it.toOpenAIMessage() },
                     stream = false
-                )
+                ).also {
+                    Log.info("Ollama Request: ${Json.encodeToString(it)}")
+                }
                 val response: OpenAIResponse = client.post("$baseUrl/v1/chat/completions") {
                     contentType(ContentType.Application.Json)
                     setBody(requestBody)
                 }.body()
+                Log.info("Ollama Response: ${Json.encodeToString(response)}")
                 return@withContext response.choices.first().message?.getContentString() ?: ""
             } catch (e: Exception) {
                 throw LLMException("调用 Ollama API 失败: ${e.message}", e)
@@ -71,8 +76,12 @@ class OllamaProvider(
                 val requestBody = OpenAIRequest(
                     model = model,
                     messages = messages.map { it.toOpenAIMessage() },
-                    stream = true
-                )
+                    stream = true,
+                    tools = tools?.map { OpenAITool(function = OpenAIFunction(it.name, it.description, it.parameters)) },
+                    tool_choice = if (tools != null) "auto" else null
+                ).also {
+                    Log.info("Ollama Request: ${Json.encodeToString(it)}")
+                }
 
                 client.preparePost("$baseUrl/v1/chat/completions") {
                     contentType(ContentType.Application.Json)
@@ -82,8 +91,13 @@ class OllamaProvider(
                         throw LLMException("Ollama API 响应错误: ${response.status}")
                     }
                     val channel: ByteReadChannel = response.bodyAsChannel()
+                    var currentToolId = ""
+                    var currentFuncName = ""
+                    val argsBuilder = StringBuilder()
+
                     while (!channel.isClosedForRead) {
                         var line = channel.readUTF8Line() ?: break
+                        Log.info("Ollama Response: $line")
                         if (line.isBlank()) continue
                         if (line.startsWith("data: ")) {
                             line = line.removePrefix("data: ")
@@ -92,9 +106,34 @@ class OllamaProvider(
 
                         try {
                             val responseObj = Json { ignoreUnknownKeys = true }.decodeFromString<OpenAIResponse>(line)
-                            val content = responseObj.choices.firstOrNull()?.delta?.getContentString() ?: ""
+                            val delta = responseObj.choices.firstOrNull()?.delta
+
+                            val content = delta?.getContentString() ?: ""
                             if (content.isNotEmpty()) {
                                 onChunk(content)
+                            }
+                            
+                            delta?.reasoning_content?.let { onThought?.invoke(it) }
+
+                            delta?.tool_calls?.firstOrNull()?.let { tc ->
+                                if (!tc.id.isNullOrEmpty()) currentToolId = tc.id
+                                if (!tc.function.name.isNullOrEmpty()) currentFuncName = tc.function.name
+                                if (!tc.function.arguments.isNullOrEmpty()) argsBuilder.append(tc.function.arguments)
+                            }
+
+                            if (responseObj.choices.firstOrNull()?.finish_reason == "tool_calls") {
+                                if (currentToolId.isNotEmpty()) {
+                                    onToolCall?.invoke(
+                                        LlmToolCall(
+                                            currentToolId,
+                                            currentFuncName,
+                                            argsBuilder.toString()
+                                        )
+                                    )
+                                    currentToolId = ""
+                                    currentFuncName = ""
+                                    argsBuilder.clear()
+                                }
                             }
                         } catch (e: Exception) {
                             logger.error("解析 Ollama 响应失败: ${e.message}\n原始响应: $line", e)
@@ -109,11 +148,43 @@ class OllamaProvider(
     }
 
     private fun LLMMessage.toOpenAIMessage(): OpenAIMessage {
-        // 简化映射逻辑，Ollama 通常用于本地运行，工具调用支持情况视具体模型而定
-        return OpenAIMessage(
-            role = role,
-            content = JsonPrimitive(content)
-        )
+        return when (role) {
+            "tool" -> OpenAIMessage(
+                role = "tool",
+                tool_call_id = toolCallId,
+                content = JsonPrimitive(content)
+            )
+
+            else -> {
+                if (images.isEmpty()) {
+                    OpenAIMessage(
+                        role = role,
+                        content = JsonPrimitive(content),
+                        tool_calls = toolCalls?.map {
+                            OpenAIToolCall(id = it.id ?: "", function = FunctionCallDetail(it.functionName, it.arguments))
+                        }
+                    )
+                } else {
+                    val contentList = mutableListOf<JsonElement>()
+                    if (content.isNotEmpty()) {
+                        contentList.add(Json.encodeToJsonElement(OpenAIContentPart(type = "text", text = content)))
+                    }
+                    images.forEach { imgData ->
+                        val formattedUrl =
+                            if (imgData.startsWith("http")) imgData else "data:image/jpeg;base64,$imgData"
+                        contentList.add(
+                            Json.encodeToJsonElement(
+                                OpenAIContentPart(
+                                    type = "image_url",
+                                    image_url = OpenAIImageUrl(url = formattedUrl)
+                                )
+                            )
+                        )
+                    }
+                    OpenAIMessage(role = role, content = JsonArray(contentList))
+                }
+            }
+        }
     }
 }
 

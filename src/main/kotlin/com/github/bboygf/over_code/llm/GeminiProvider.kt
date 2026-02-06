@@ -17,6 +17,7 @@ import io.ktor.utils.io.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
+import kotlinx.serialization.encodeToString
 import kotlin.coroutines.cancellation.CancellationException
 
 class GeminiProvider(
@@ -122,6 +123,7 @@ class GeminiProvider(
                     try {
                         while (!channel.isClosedForRead) {
                             val line = channel.readUTF8Line() ?: break
+                            Log.info("Gemini Response: $line")
                             if (line.isEmpty() || !line.startsWith("data:")) continue
 
                             val data = line.substringAfter("data:").trim()
@@ -194,14 +196,14 @@ class GeminiProvider(
     ): GeminiRequest {
         val systemMessage = messages.find { it.role == "system" }
         val systemInstruction = systemMessage?.let {
-            GeminiContent(parts = listOf(GeminiPart(text = it.content)))
+            GeminiContent(role = "system", parts = listOf(GeminiPart(text = it.content)))
         }
 
         val convertedMessages = messages.filter { it.role != "system" }.map { msg ->
             val parts = mutableListOf<GeminiPart>()
             val geminiRole = when (msg.role) {
                 "assistant" -> "model"
-                "tool", "function" -> "function"
+                "tool", "function" -> "user"
                 else -> "user"
             }
 
@@ -209,7 +211,7 @@ class GeminiProvider(
                 parts.add(GeminiPart(thought = JsonPrimitive(msg.thought)))
             }
 
-            if (msg.content.isNotEmpty()) {
+            if (msg.content.isNotEmpty() && msg.role != "tool" && msg.role != "function") {
                 parts.add(GeminiPart(text = msg.content))
             }
 
@@ -229,7 +231,7 @@ class GeminiProvider(
                                 buildJsonObject { }
                             }
                         ),
-                        thoughtSignature = msg.thoughtSignature
+                        thoughtSignature = if (index == 0) msg.thoughtSignature else null
                     )
                 )
             }
@@ -249,32 +251,27 @@ class GeminiProvider(
 
         val finalContents = mutableListOf<GeminiContent>()
         if (convertedMessages.isNotEmpty()) {
-            var currentRole = convertedMessages[0].first
-            val currentParts = mutableListOf<GeminiPart>()
-            currentParts.addAll(convertedMessages[0].second)
-
-            for (i in 1 until convertedMessages.size) {
+            for (i in convertedMessages.indices) {
                 val (role, parts) = convertedMessages[i]
-                if (role == currentRole) {
-                    currentParts.addAll(parts)
+                val prevContent = finalContents.lastOrNull()
+                
+                if (prevContent != null && prevContent.role == role) {
+                    val mergedParts = prevContent.parts?.toMutableList() ?: mutableListOf()
+                    mergedParts.addAll(parts)
+                    finalContents[finalContents.lastIndex] = GeminiContent(role = role, parts = mergedParts)
                 } else {
-                    finalContents.add(GeminiContent(role = currentRole, parts = currentParts.toList()))
-                    currentRole = role
-                    currentParts.clear()
-                    currentParts.addAll(parts)
+                    finalContents.add(GeminiContent(role = role, parts = parts))
                 }
             }
-            finalContents.add(GeminiContent(role = currentRole, parts = currentParts.toList()))
         }
 
         return GeminiRequest(
             contents = finalContents,
             systemInstruction = systemInstruction,
-            generationConfig = GeminiGenerationConfig(
-                thinkingConfig = GeminiThinkingConfig(includeThoughts = true)
-            ),
             tools = tools
-        )
+        ).also {
+            Log.info("Gemini Request: ${Json.encodeToString(it)}")
+        }
     }
 
     private fun parseBase64Image(base64String: String): Pair<String, String> {

@@ -261,7 +261,7 @@ object ReadFileRangeTool : LlmTool {
             }
             putJsonObject("startLine") {
                 put("type", "integer")
-                put("description", "起��行号 (从 1 开始)")
+                put("description", "起始行号 (从 1 开始)")
             }
             putJsonObject("endLine") {
                 put("type", "integer")

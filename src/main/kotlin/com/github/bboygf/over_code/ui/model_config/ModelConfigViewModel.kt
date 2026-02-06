@@ -126,11 +126,13 @@ class ModelConfigViewModel(
         return when (provider) {
             "openai" -> "https://api.openai.com/v1" to "gpt-3.5-turbo"
             "gemini" -> "https://generativelanguage.googleapis.com/v1beta/models" to "gemini-3-flash-preview"
+            "minmax" -> "https://api.minimaxi.com/v1" to "MiniMax-M2.1"
             "ollama" -> "http://localhost:11434" to "llama2"
             "zhipu" -> "https://open.bigmodel.cn/api/paas/v4" to "glm-4"
             "qwen" -> "https://dashscope.aliyuncs.com/compatible-mode/v1" to "qwen-plus"
             "deepseek" -> "https://api.deepseek.com/v1" to "deepseek-chat"
             "moonshot" -> "https://api.moonshot.cn/v1" to "moonshot-v1-8k"
+            "anthropic" -> "https://api.anthropic.com/v1/messages" to "claude-opus-4-6"
             else -> "" to ""
         }
     }

@@ -28,7 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.bboygf.over_code.enums.ChatRole
-import com.github.bboygf.over_code.vo.ChatMessage
+import com.github.bboygf.over_code.vo.ChatMessageVo
 import com.github.bboygf.over_code.vo.MessagePart
 
 
@@ -127,7 +127,7 @@ fun WelcomeScreen() {
  */
 @Composable
 fun MessageBubble(
-    message: ChatMessage,
+    message: ChatMessageVo,
     onCopyCode: (String) -> Unit = {},
     onInsertCode: (String) -> Unit = {}
 ) {

@@ -90,7 +90,7 @@ class ClaudeProvider(
             try {
                 val requestBody = buildClaudeRequest(messages, tools, stream = true)
 
-                client.preparePost(baseUrl) {
+                client.preparePost("$baseUrl/v1/messages") {
                     header("x-api-key", apiKey)
                     header("anthropic-version", "2023-06-01")
                     contentType(ContentType.Application.Json)
@@ -104,9 +104,10 @@ class ClaudeProvider(
                     var currentToolName = ""
                     val toolArgumentsBuilder = StringBuilder()
 
-                    while (!channel.isClosedForRead) {
-                        val line = channel.readUTF8Line() ?: break
-                        if (!line.startsWith("data:")) continue
+                        while (!channel.isClosedForRead) {
+                            val line = channel.readUTF8Line() ?: break
+                            Log.info("Claude Response: $line")
+                            if (!line.startsWith("data:")) continue
 
                         val data = line.removePrefix("data:").trim()
                         if (data == "[DONE]") break
@@ -190,7 +191,22 @@ class ClaudeProvider(
             }
 
             putJsonArray("messages") {
-                messages.filter { it.role != "system" }.forEach { msg ->
+                val convertedMessages = messages.filter { it.role != "system" }
+                val mergedMessages = mutableListOf<LLMMessage>()
+                
+                convertedMessages.forEach { msg ->
+                    if (mergedMessages.isNotEmpty() && mergedMessages.last().role == msg.role && msg.role != "assistant") {
+                        val last = mergedMessages.removeAt(mergedMessages.size - 1)
+                        mergedMessages.add(last.copy(
+                            content = (if (last.content.isNotEmpty() && msg.content.isNotEmpty()) last.content + "\n\n" + msg.content else last.content + msg.content),
+                            images = last.images + msg.images
+                        ))
+                    } else {
+                        mergedMessages.add(msg)
+                    }
+                }
+
+                mergedMessages.forEach { msg ->
                     addJsonObject {
                         put("role", if (msg.role == "tool") "user" else msg.role)
                         putJsonArray("content") {
@@ -207,6 +223,17 @@ class ClaudeProvider(
                                         put("text", msg.content)
                                     }
                                 }
+                                msg.images.forEach { imgData ->
+                                    val (mimeType, rawBase64) = parseBase64Image(imgData)
+                                    addJsonObject {
+                                        put("type", "image")
+                                        putJsonObject("source") {
+                                            put("type", "base64")
+                                            put("media_type", mimeType)
+                                            put("data", rawBase64)
+                                        }
+                                    }
+                                }
                                 msg.toolCalls?.forEach { tc ->
                                     addJsonObject {
                                         put("type", "tool_use")
@@ -220,6 +247,20 @@ class ClaudeProvider(
                     }
                 }
             }
+        }.also {
+            Log.info("Claude Request: ${it.toString()}")
+        }
+    }
+
+    private fun parseBase64Image(base64String: String): Pair<String, String> {
+        return if (base64String.contains(",")) {
+            val split = base64String.split(",", limit = 2)
+            val header = split[0]
+            val data = split[1]
+            val mime = header.substringAfter("data:").substringBefore(";")
+            mime to data
+        } else {
+            "image/jpeg" to base64String
         }
     }
 }

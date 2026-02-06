@@ -43,7 +43,6 @@ import com.intellij.openapi.fileChooser.FileChooserDescriptor
 
 import com.intellij.ui.content.ContentFactory
 import kotlinx.coroutines.launch
-import org.jetbrains.skia.Font
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.swing.JComponent
@@ -125,9 +124,9 @@ fun OverCodeChatUI(project: Project? = null) {
     // 加载历史消息
     LaunchedEffect(viewModel.currentSessionId) {
         viewModel.loadMessages(viewModel.currentSessionId)
-        if (viewModel.chatMessages.isNotEmpty()) {
+        if (viewModel.chatMessageVos.isNotEmpty()) {
             try {
-                listState.animateScrollToItem(viewModel.chatMessages.size - 1)
+                listState.animateScrollToItem(viewModel.chatMessageVos.size - 1)
             } catch (e: Exception) {
                 println("滚动到最后异常" + e.message)
             }
@@ -240,7 +239,7 @@ fun OverCodeChatUI(project: Project? = null) {
                         primaryColor = primaryColor
                     )
                 } else {
-                    if (viewModel.chatMessages.isEmpty()) {
+                    if (viewModel.chatMessageVos.isEmpty()) {
                         // 空状态 - 显示欢迎界面
                         WelcomeScreen()
                     } else {
@@ -252,7 +251,7 @@ fun OverCodeChatUI(project: Project? = null) {
                             verticalArrangement = Arrangement.spacedBy(5.dp),
                             userScrollEnabled = true
                         ) {
-                            items(viewModel.chatMessages) { message ->
+                            items(viewModel.chatMessageVos) { message ->
                                 MessageBubble(
                                     message = message,
                                     onCopyCode = { viewModel.copyToClipboard(it) },
@@ -284,9 +283,9 @@ fun OverCodeChatUI(project: Project? = null) {
                         viewModel.sendMessage(userInput.text) {
                             // 自动滚动到底部
                             coroutineScope.launch {
-                                if (viewModel.chatMessages.isNotEmpty()) {
+                                if (viewModel.chatMessageVos.isNotEmpty()) {
                                     try {
-                                        listState.animateScrollToItem(viewModel.chatMessages.size - 1)
+                                        listState.animateScrollToItem(viewModel.chatMessageVos.size - 1)
                                     } catch (e: Exception) {
                                         println("获取最后一行数据异常！" + e.message)
                                     }

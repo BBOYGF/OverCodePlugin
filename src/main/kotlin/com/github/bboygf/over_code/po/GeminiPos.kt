@@ -70,10 +70,11 @@ data class GeminiContent(
 @Serializable
 data class GeminiPart(
     val text: String? = null,
-    @SerialName("inline_data")
+    @SerialName("inlineData")
     val inlineData: GeminiBlob? = null,
     val functionCall: GeminiFunctionCall? = null,
     val thought: JsonElement? = null,
+    @SerialName("thoughtSignature")
     val thoughtSignature: String? = null,
     val functionResponse: GeminiFunctionResponse? = null
 )
@@ -94,7 +95,7 @@ data class GeminiFunctionResponse(
 
 @Serializable
 data class GeminiBlob(
-    @SerialName("mime_type")
+    @SerialName("mimeType")
     val mimeType: String,
     val data: String // Raw Base64 string
 )

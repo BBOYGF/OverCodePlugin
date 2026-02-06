@@ -7,14 +7,11 @@ import androidx.compose.runtime.setValue
 import com.github.bboygf.over_code.enums.ChatPattern
 import com.github.bboygf.over_code.enums.ChatRole
 import com.github.bboygf.over_code.llm.LLMService
-import com.github.bboygf.over_code.po.GeminiFunctionCall
-import com.github.bboygf.over_code.po.GeminiPart
-import com.github.bboygf.over_code.po.GeminiTool
 import com.github.bboygf.over_code.po.LLMMessage
 import com.github.bboygf.over_code.po.LlmToolCall
 import com.github.bboygf.over_code.po.LlmToolDefinition
 import com.github.bboygf.over_code.services.ChatDatabaseService
-import com.github.bboygf.over_code.vo.ChatMessage
+import com.github.bboygf.over_code.vo.ChatMessageVo
 import com.github.bboygf.over_code.vo.ModelConfigInfo
 import com.github.bboygf.over_code.vo.SessionInfo
 import com.intellij.openapi.command.WriteCommandAction
@@ -50,7 +47,7 @@ class HomeViewModel(
     private val llmService: LLMService?
 ) {
     // UI状态
-    var chatMessages by mutableStateOf(listOf<ChatMessage>())
+    var chatMessageVos by mutableStateOf(listOf<ChatMessageVo>())
         private set
 
     var currentSessionId by mutableStateOf("default")
@@ -139,7 +136,7 @@ class HomeViewModel(
      */
     fun loadMessages(sessionId: String) {
         currentSessionId = sessionId
-        chatMessages = dbService?.loadMessages(sessionId) ?: emptyList()
+        chatMessageVos = dbService?.loadMessages(sessionId) ?: emptyList()
     }
 
     /**
@@ -148,7 +145,7 @@ class HomeViewModel(
     fun createNewSession() {
         dbService?.let {
             currentSessionId = it.createSession()
-            chatMessages = emptyList()
+            chatMessageVos = emptyList()
             showHistory = false
         }
     }
@@ -160,7 +157,7 @@ class HomeViewModel(
         dbService?.deleteSession(sessionId)
         loadSessions()
         if (currentSessionId == sessionId) {
-            chatMessages = emptyList()
+            chatMessageVos = emptyList()
             currentSessionId = "default"
         }
     }
@@ -170,7 +167,7 @@ class HomeViewModel(
      */
     fun clearCurrentSession() {
         dbService?.clearMessages(currentSessionId)
-        chatMessages = emptyList()
+        chatMessageVos = emptyList()
     }
 
 
@@ -211,25 +208,27 @@ class HomeViewModel(
         selectedImageBase64List.clear()
 
         // 1. 处理用户消息
-        val userMessage = ChatMessage(
+        val userMessage = ChatMessageVo(
             id = System.currentTimeMillis().toString(),
             content = userInput,
-            chatRole = ChatRole.用户
+            chatRole = ChatRole.用户,
+            images = currentImageList
         )
         // 优化：简化 List 更新逻辑
-        chatMessages = chatMessages + userMessage
+        chatMessageVos = chatMessageVos + userMessage
         dbService?.saveMessage(userMessage, currentSessionId)
 
         // 2. 构建 LLM 历史 (注意：此时 UI 上的 messages 已经包含了 userMessage)
-        val llmMessages = chatMessages.mapIndexed { index, msg ->
+        val llmMessages = chatMessageVos.mapIndexed { index, msg ->
             LLMMessage(
                 role = msg.chatRole.role,
                 content = msg.content,
                 // 只给最后一条用户消息附带图片
-                images = if (msg.chatRole == ChatRole.用户 && index == chatMessages.size - 1) currentImageList else emptyList(),
+                images = msg.images,
                 toolCalls = msg.toolCalls,
                 toolCallId = msg.toolCallId,
-                thought = msg.thought
+                thought = msg.thought,
+                thoughtSignature = msg.thoughtSignature
             )
         }.toMutableList()
 
@@ -295,7 +294,7 @@ class HomeViewModel(
         }
         ioScope.launch {
             // 发送信号：滚动到最后一条（索引 0 或 messages.size - 1）
-            _scrollEvents.emit(chatMessages.size - 1)
+            _scrollEvents.emit(chatMessageVos.size - 1)
         }
     }
 
@@ -367,13 +366,13 @@ class HomeViewModel(
         if (callList.isEmpty()) {
             val responseText = contentBuilder.toString()
             if (responseText.isNotEmpty()) {
-                val aiMessage = ChatMessage(
+                val aiMessage = ChatMessageVo(
                     id = System.currentTimeMillis().toString(),
                     content = responseText,
                     chatRole = ChatRole.助理,
                     thought = currentThought.toString().takeIf { it.isNotEmpty() }
                 )
-                chatMessages = chatMessages + aiMessage
+                chatMessageVos = chatMessageVos + aiMessage
                 dbService?.saveMessage(aiMessage, currentSessionId)
                 uiScope.launch { onScrollToBottom() }
             }
@@ -385,13 +384,15 @@ class HomeViewModel(
             "${it.functionName}: ${it.arguments}"
         }
 
-        val assistantMessage = ChatMessage(
+        val assistantMessage = ChatMessageVo(
             id = System.currentTimeMillis().toString(),
-            content = "parallel calling tools:\n$toolCallDescription",
+            content = contentBuilder.toString().ifEmpty { "parallel calling tools:\n$toolCallDescription" },
             chatRole = ChatRole.助理,
             thought = currentThought.toString().takeIf { it.isNotEmpty() },
+            toolCalls = callList.toList(),
+            thoughtSignature = callList.firstOrNull()?.id
         )
-        chatMessages = chatMessages + assistantMessage
+        chatMessageVos = chatMessageVos + assistantMessage
         dbService?.saveMessage(assistantMessage)
         uiScope.launch { onScrollToBottom() }
 
@@ -412,6 +413,7 @@ class HomeViewModel(
                 content = contentBuilder.toString(),
                 toolCalls = callList.toList(),
                 thought = currentThought.toString().takeIf { it.isNotEmpty() },
+                thoughtSignature = callList.firstOrNull()?.id
             )
         )
 
@@ -426,13 +428,13 @@ class HomeViewModel(
                 )
             )
 
-            val toolsMessage = ChatMessage(
+            val toolsMessage = ChatMessageVo(
                 id = System.currentTimeMillis().toString(),
                 content = result.result,
                 chatRole = ChatRole.工具,
                 toolCallId = result.call.id
             )
-            chatMessages = chatMessages + toolsMessage
+            chatMessageVos = chatMessageVos + toolsMessage
             dbService?.saveMessage(toolsMessage, currentSessionId)
             uiScope.launch { onScrollToBottom() }
         }
