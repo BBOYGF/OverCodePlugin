@@ -122,7 +122,7 @@ class GeminiProvider(
 
                     try {
                         while (!channel.isClosedForRead) {
-                            val line = channel.readUTF8Line() ?: break
+                            line = channel.readUTF8Line() ?: break
                             Log.info("Gemini Response: $line")
                             if (line.isEmpty() || !line.startsWith("data:")) continue
 

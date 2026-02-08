@@ -76,7 +76,7 @@ object ReadFileContentTool : LlmTool {
 
     override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
         val path = args["absolutePath"]?.jsonPrimitive?.content ?: ""
-        return ProjectFileUtils.readFileContent(path) ?: "null"
+        return ProjectFileUtils.readFileContent(path)
     }
 }
 
@@ -180,18 +180,15 @@ object CreateFileOrDirTool : LlmTool {
     override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
         val path = args["absolutePath"]?.jsonPrimitive?.content ?: ""
         val isDir = args["isDirectory"]?.jsonPrimitive?.booleanOrNull ?: false
-        val createFileOrDir = ProjectFileUtils.createFileOrDir(project, path, isDir)
-        return if (createFileOrDir == null || !createFileOrDir.exists()) {
-            "创建失败！"
-        } else {
-            "创建成功！"
-        }
+        val result = ProjectFileUtils.createFileOrDir(project, path, isDir)
+        return result
     }
 }
 
 object ReplaceCodeByLineTool : LlmTool {
     override val name = "replace_code_by_line"
-    override val description = "根据文件名、起始行号、终止行号替换文件内容，（如果不确定行号请先获取行）请不要并行修改，防止修改同一个文件导致行号不读。"
+    override val description =
+        "根据文件名、起始行号、终止行号替换文件内容，（如果不确定行号请先获取行）请不要并行修改，防止修改同一个文件导致行号不读。"
     override val parameters = buildJsonObject {
         put("type", "object")
         put("properties", buildJsonObject {
@@ -310,7 +307,7 @@ object OrganizeThoughtsTool : LlmTool {
         "当用户有新的代码修改需求时或者用户需要按计划修改代码时调用"
     override val parameters = buildJsonObject {
         put("type", "object")
-        put("properties", buildJsonObject {       })
+        put("properties", buildJsonObject { })
     }
     override val isWriteTool = false
 

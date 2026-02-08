@@ -61,8 +61,9 @@ data class OpenAITool(
 )
 @Serializable
 data class OpenAIToolCall(
-    val id: String,
-    val type: String = "function",
+    val index: Int? = null, // 新增：流式返回中的索引
+    val id: String? = null,
+    val type: String? = "function",
     val function: FunctionCallDetail
 )
 
@@ -79,4 +80,11 @@ data class OpenAIChoice(
     val message: OpenAIMessage? = null, // 非流式返回
     val delta: OpenAIMessage? = null,   // 流式返回
     val finish_reason: String? = null
+)
+
+// 定义一个内部类或结构体来累积工具调用数据
+class ToolCallAccumulator(
+    var id: String = "",
+    var name: String = "",
+    val argsBuilder: StringBuilder = StringBuilder()
 )

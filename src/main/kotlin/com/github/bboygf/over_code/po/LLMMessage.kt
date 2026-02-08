@@ -33,7 +33,7 @@ data class LLMMessage(
     val content: String,                 // 消息文本内容
     val images: List<String> = emptyList(), // Base64 图片列表
 
-    // --- ��具调用相关 ---
+    // --- 具调用相关 ---
     val toolCalls: List<LlmToolCall>? = null, // 当 role 为 "assistant" 时，模型发起的工具调用
     val toolCallId: String? = null,           // 当 role 为 "tool" 时，该结果对应的调用 ID
 

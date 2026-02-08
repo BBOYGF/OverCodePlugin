@@ -29,7 +29,6 @@ class OllamaProvider(
     private val model: String = "llama2"
 ) : LLMProvider {
 
-    private val logger = thisLogger()
 
     private val client = HttpClient(CIO) {
         install(ContentNegotiation) {
@@ -77,67 +76,68 @@ class OllamaProvider(
                     model = model,
                     messages = messages.map { it.toOpenAIMessage() },
                     stream = true,
-                    tools = tools?.map { OpenAITool(function = OpenAIFunction(it.name, it.description, it.parameters)) },
+                    tools = tools?.map {
+                        OpenAITool(
+                            function = OpenAIFunction(
+                                it.name,
+                                it.description,
+                                it.parameters
+                            )
+                        )
+                    },
                     tool_choice = if (tools != null) "auto" else null
                 ).also {
                     Log.info("Ollama Request: ${Json.encodeToString(it)}")
                 }
-
+                val toolCallsMap = mutableMapOf<Int, ToolCallAccumulator>()
+                var line = ""
                 client.preparePost("$baseUrl/v1/chat/completions") {
                     contentType(ContentType.Application.Json)
                     setBody(requestBody)
                 }.execute { response ->
                     if (!response.status.isSuccess()) {
-                        throw LLMException("Ollama API 响应错误: ${response.status}")
+                        throw LLMException("LLM API 响应错误: ${response.status}")
                     }
                     val channel: ByteReadChannel = response.bodyAsChannel()
-                    var currentToolId = ""
-                    var currentFuncName = ""
-                    val argsBuilder = StringBuilder()
-
                     while (!channel.isClosedForRead) {
-                        var line = channel.readUTF8Line() ?: break
-                        Log.info("Ollama Response: $line")
+                        line = channel.readUTF8Line() ?: break
+                        Log.info("OpenAI Response: $line")
                         if (line.isBlank()) continue
-                        if (line.startsWith("data: ")) {
-                            line = line.removePrefix("data: ")
-                        }
+                        if (line.startsWith(":")) continue
+                        if (line.startsWith("data: ")) line = line.removePrefix("data: ")
                         if (line == "[DONE]") break
-
                         try {
                             val responseObj = Json { ignoreUnknownKeys = true }.decodeFromString<OpenAIResponse>(line)
-                            val delta = responseObj.choices.firstOrNull()?.delta
+                            val delta = responseObj.choices.firstOrNull()?.delta ?: continue
 
-                            val content = delta?.getContentString() ?: ""
-                            if (content.isNotEmpty()) {
-                                onChunk(content)
-                            }
-                            
-                            delta?.reasoning_content?.let { onThought?.invoke(it) }
+                            val content: String? = delta.getContentString()
+                            if (!content.isNullOrEmpty()) onChunk(content)
 
-                            delta?.tool_calls?.firstOrNull()?.let { tc ->
-                                if (!tc.id.isNullOrEmpty()) currentToolId = tc.id
-                                if (!tc.function.name.isNullOrEmpty()) currentFuncName = tc.function.name
-                                if (!tc.function.arguments.isNullOrEmpty()) argsBuilder.append(tc.function.arguments)
-                            }
+                            delta.reasoning_content?.let { onThought?.invoke(it) }
 
-                            if (responseObj.choices.firstOrNull()?.finish_reason == "tool_calls") {
-                                if (currentToolId.isNotEmpty()) {
-                                    onToolCall?.invoke(
-                                        LlmToolCall(
-                                            currentToolId,
-                                            currentFuncName,
-                                            argsBuilder.toString()
-                                        )
-                                    )
-                                    currentToolId = ""
-                                    currentFuncName = ""
-                                    argsBuilder.clear()
-                                }
+                            delta.tool_calls?.forEach { tc ->
+                                val idx = tc.index ?: 0
+                                val acc = toolCallsMap.getOrPut(idx) { ToolCallAccumulator() }
+
+                                tc.id?.let { if (it.isNotEmpty()) acc.id = it }
+                                tc.function.name?.let { if (it.isNotEmpty()) acc.name = it }
+                                tc.function.arguments?.let { acc.argsBuilder.append(it) }
                             }
                         } catch (e: Exception) {
-                            logger.error("解析 Ollama 响应失败: ${e.message}\n原始响应: $line", e)
+                            Log.error("解析 OpenAI 响应失败: ${e.message}\n原始响应: $line", e)
                         }
+                    }
+                    if (toolCallsMap.isNotEmpty()) {
+                        toolCallsMap.keys.sorted().forEach { idx ->
+                            toolCallsMap[idx]?.let { acc ->
+                                if (acc.id.isNotEmpty() || acc.name.isNotEmpty()) {
+                                    onToolCall?.invoke(
+                                        LlmToolCall(acc.id, acc.name, acc.argsBuilder.toString())
+                                    )
+                                }
+                            }
+                        }
+                        toolCallsMap.clear()
                     }
                 }
             } catch (e: Exception) {
@@ -161,7 +161,10 @@ class OllamaProvider(
                         role = role,
                         content = JsonPrimitive(content),
                         tool_calls = toolCalls?.map {
-                            OpenAIToolCall(id = it.id ?: "", function = FunctionCallDetail(it.functionName, it.arguments))
+                            OpenAIToolCall(
+                                id = it.id ?: "",
+                                function = FunctionCallDetail(it.functionName, it.arguments)
+                            )
                         }
                     )
                 } else {

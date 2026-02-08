@@ -97,30 +97,41 @@ class ClaudeProvider(
                     setBody(requestBody)
                 }.execute { response ->
                     if (!response.status.isSuccess()) {
-                        throw LLMException("Claude API 响应错误: ${response.status}")
+                        val errorBody = response.bodyAsText()
+                        throw LLMException("Claude API 响应错误: ${response.status}, Body: $errorBody")
                     }
                     val channel: ByteReadChannel = response.bodyAsChannel()
-                    var currentToolId = ""
-                    var currentToolName = ""
-                    val toolArgumentsBuilder = StringBuilder()
 
-                        while (!channel.isClosedForRead) {
-                            val line = channel.readUTF8Line() ?: break
-                            Log.info("Claude Response: $line")
-                            if (!line.startsWith("data:")) continue
+                    // 用于累积多个并行工具调用的 Map
+                    class ToolCallAccumulator(
+                        var id: String = "",
+                        var name: String = "",
+                        val argsBuilder: StringBuilder = StringBuilder()
+                    )
+
+                    val toolCallsMap = mutableMapOf<Int, ToolCallAccumulator>()
+
+                    while (!channel.isClosedForRead) {
+                        val line = channel.readUTF8Line() ?: break
+                        Log.info("Claude Response: $line")
+                        if (!line.startsWith("data:")) continue
 
                         val data = line.removePrefix("data:").trim()
                         if (data == "[DONE]") break
                         if (data.isEmpty()) continue
 
                         try {
-                            val event = Json.parseToJsonElement(data) as JsonObject
-                            when (event["type"]?.jsonPrimitive?.content) {
+                            val event = Json.parseToJsonElement(data).jsonObject
+                            val eventType = event["type"]?.jsonPrimitive?.content
+                            val index = event["index"]?.jsonPrimitive?.intOrNull ?: 0
+
+                            when (eventType) {
                                 "content_block_start" -> {
                                     val block = event["content_block"]?.jsonObject
                                     if (block?.get("type")?.jsonPrimitive?.content == "tool_use") {
-                                        currentToolId = block["id"]?.jsonPrimitive?.content ?: ""
-                                        currentToolName = block["name"]?.jsonPrimitive?.content ?: ""
+                                        val acc = toolCallsMap.getOrPut(index) { ToolCallAccumulator() }
+                                        acc.id = block["id"]?.jsonPrimitive?.content ?: ""
+                                        acc.name = block["name"]?.jsonPrimitive?.content ?: ""
                                     }
                                 }
 
@@ -129,35 +140,39 @@ class ClaudeProvider(
                                     when (delta?.get("type")?.jsonPrimitive?.content) {
                                         "text_delta" -> onChunk(delta["text"]?.jsonPrimitive?.content ?: "")
                                         "input_json_delta" -> {
-                                            toolArgumentsBuilder.append(
+                                            toolCallsMap[index]?.argsBuilder?.append(
                                                 delta["partial_json"]?.jsonPrimitive?.content ?: ""
                                             )
+                                        }
+
+                                        "thinking_delta" -> {
+                                            onThought?.invoke(delta["thinking"]?.jsonPrimitive?.content ?: "")
                                         }
                                     }
                                 }
 
                                 "content_block_stop" -> {
-                                    if (currentToolId.isNotEmpty()) {
-                                        onToolCall?.invoke(
-                                            LlmToolCall(
-                                                currentToolId,
-                                                currentToolName,
-                                                toolArgumentsBuilder.toString()
+                                    toolCallsMap[index]?.let { acc ->
+                                        if (acc.id.isNotEmpty() && acc.name.isNotEmpty()) {
+                                            onToolCall?.invoke(
+                                                LlmToolCall(
+                                                    acc.id,
+                                                    acc.name,
+                                                    acc.argsBuilder.toString()
+                                                )
                                             )
-                                        )
-                                        currentToolId = ""
-                                        currentToolName = ""
-                                        toolArgumentsBuilder.clear()
+                                            toolCallsMap.remove(index)
+                                        }
                                     }
                                 }
                             }
                         } catch (e: Exception) {
-                            // 忽略解析错误
+                            Log.error("解析 Claude 响应分片失败: ${e.message}")
                         }
                     }
                 }
             } catch (e: Exception) {
-                if (e is CancellationException) throw e
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 throw LLMException("流式调用 Claude API 失败: ${e.message}", e)
             }
         }
@@ -192,54 +207,59 @@ class ClaudeProvider(
 
             putJsonArray("messages") {
                 val convertedMessages = messages.filter { it.role != "system" }
-                val mergedMessages = mutableListOf<LLMMessage>()
-                
+
+                // 将连续相同角色的消息分组
+                // 对于 Claude，工具调用结果 (role="tool") 必须作为一组 content 放入同一个 "user" 角色消息中
+                val messageGroups = mutableListOf<MutableList<LLMMessage>>()
                 convertedMessages.forEach { msg ->
-                    if (mergedMessages.isNotEmpty() && mergedMessages.last().role == msg.role && msg.role != "assistant") {
-                        val last = mergedMessages.removeAt(mergedMessages.size - 1)
-                        mergedMessages.add(last.copy(
-                            content = (if (last.content.isNotEmpty() && msg.content.isNotEmpty()) last.content + "\n\n" + msg.content else last.content + msg.content),
-                            images = last.images + msg.images
-                        ))
+                    if (messageGroups.isNotEmpty() && messageGroups.last().last().role == msg.role) {
+                        messageGroups.last().add(msg)
                     } else {
-                        mergedMessages.add(msg)
+                        messageGroups.add(mutableListOf(msg))
                     }
                 }
 
-                mergedMessages.forEach { msg ->
+                messageGroups.forEach { group ->
+                    val firstMsg = group.first()
                     addJsonObject {
-                        put("role", if (msg.role == "tool") "user" else msg.role)
+                        put("role", if (firstMsg.role == "tool") "user" else firstMsg.role)
                         putJsonArray("content") {
-                            if (msg.role == "tool") {
-                                addJsonObject {
-                                    put("type", "tool_result")
-                                    put("tool_use_id", msg.toolCallId)
-                                    put("content", msg.content)
-                                }
-                            } else {
-                                if (msg.content.isNotEmpty()) {
-                                    addJsonObject {
-                                        put("type", "text")
-                                        put("text", msg.content)
-                                    }
-                                }
-                                msg.images.forEach { imgData ->
-                                    val (mimeType, rawBase64) = parseBase64Image(imgData)
-                                    addJsonObject {
-                                        put("type", "image")
-                                        putJsonObject("source") {
-                                            put("type", "base64")
-                                            put("media_type", mimeType)
-                                            put("data", rawBase64)
+                            group.forEach { msg ->
+                                when (msg.role) {
+                                    "tool" -> {
+                                        addJsonObject {
+                                            put("type", "tool_result")
+                                            put("tool_use_id", msg.toolCallId)
+                                            put("content", msg.content)
                                         }
                                     }
-                                }
-                                msg.toolCalls?.forEach { tc ->
-                                    addJsonObject {
-                                        put("type", "tool_use")
-                                        put("id", tc.id)
-                                        put("name", tc.functionName)
-                                        put("input", Json.parseToJsonElement(tc.arguments))
+
+                                    else -> {
+                                        if (msg.content.isNotEmpty()) {
+                                            addJsonObject {
+                                                put("type", "text")
+                                                put("text", msg.content)
+                                            }
+                                        }
+                                        msg.images.forEach { imgData ->
+                                            val (mimeType, rawBase64) = parseBase64Image(imgData)
+                                            addJsonObject {
+                                                put("type", "image")
+                                                putJsonObject("source") {
+                                                    put("type", "base64")
+                                                    put("media_type", mimeType)
+                                                    put("data", rawBase64)
+                                                }
+                                            }
+                                        }
+                                        msg.toolCalls?.forEach { tc ->
+                                            addJsonObject {
+                                                put("type", "tool_use")
+                                                put("id", tc.id)
+                                                put("name", tc.functionName)
+                                                put("input", Json.parseToJsonElement(tc.arguments))
+                                            }
+                                        }
                                     }
                                 }
                             }

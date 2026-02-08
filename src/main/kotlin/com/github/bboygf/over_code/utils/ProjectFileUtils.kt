@@ -309,7 +309,7 @@ object ProjectFileUtils {
      * @param isDirectory true为创建目录，false为创建文件
      * @return 创建成功的 VirtualFile，如果失败则返回 null
      */
-    fun createFileOrDir(project: Project, absolutePath: String, isDirectory: Boolean): VirtualFile? {
+    fun createFileOrDir(project: Project, absolutePath: String, isDirectory: Boolean): String {
         Log.info("调用工具，创建文件或目录")
         val cleanPath = sanitizePath(absolutePath)
         // 将路径转换为系统无关路径 (处理 Windows 反斜杠问题)
@@ -318,11 +318,12 @@ object ProjectFileUtils {
         var result: VirtualFile? = null
 
         // 所有写操作必须在 WriteCommandAction 中执行，以支持 Undo 并确保线程安全
-        WriteCommandAction.runWriteCommandAction(project) {
+        return WriteCommandAction.runWriteCommandAction<String>(project) {
             try {
                 if (isDirectory) {
                     // 创建目录（如果父目录不存在会自动创建）
                     result = VfsUtil.createDirectoryIfMissing(systemIndependentPath)
+                    return@runWriteCommandAction "创建文件成功！"
                 } else {
                     // 创建文件
                     val file = File(systemIndependentPath)
@@ -331,14 +332,17 @@ object ProjectFileUtils {
                     if (parentDir != null) {
                         // 在父目录下查找或创建子文件
                         val existingFile = parentDir.findChild(file.name)
-                        result = existingFile ?: parentDir.createChildData(this, file.name)
+                        existingFile ?: parentDir.createChildData(this, file.name)
+                        return@runWriteCommandAction "创建文件成功！"
+                    } else {
+                        return@runWriteCommandAction "创建文件成功！"
                     }
                 }
             } catch (e: IOException) {
                 e.printStackTrace()
+                return@runWriteCommandAction "创建目录异常：: $absolutePath"
             }
         }
-        return result
     }
 
     /**
