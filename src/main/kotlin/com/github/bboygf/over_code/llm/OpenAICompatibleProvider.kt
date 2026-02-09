@@ -39,7 +39,7 @@ class OpenAICompatibleProvider(
     private val host: String,
     private val port: String
 ) : LLMProvider {
-
+    val json = Json { ignoreUnknownKeys = true }
     private val client = HttpClient(CIO) {
         if (useProxy) {
             engine {
@@ -104,7 +104,7 @@ class OpenAICompatibleProvider(
                 tools = tools?.map { OpenAITool(function = OpenAIFunction(it.name, it.description, it.parameters)) },
                 tool_choice = if (tools != null) "auto" else null
             ).also {
-                Log.info("OpenAI Request: ${Json.encodeToString(it)}")
+//                Log.info("OpenAI Request: ${Json.encodeToString(it)}")
             }
             val toolCallsMap = mutableMapOf<Int, ToolCallAccumulator>()
             var line = ""
@@ -115,6 +115,7 @@ class OpenAICompatibleProvider(
                     setBody(requestBody)
                 }.execute { response ->
                     if (!response.status.isSuccess()) {
+                        Log.error(response.toString())
                         throw LLMException("LLM API 响应错误: ${response.status}")
                     }
                     val channel: ByteReadChannel = response.bodyAsChannel()
@@ -126,7 +127,7 @@ class OpenAICompatibleProvider(
                         if (line.startsWith("data: ")) line = line.removePrefix("data: ")
                         if (line == "[DONE]") break
                         try {
-                            val responseObj = Json { ignoreUnknownKeys = true }.decodeFromString<OpenAIResponse>(line)
+                            val responseObj = json.decodeFromString<OpenAIResponse>(line)
                             val delta = responseObj.choices.firstOrNull()?.delta ?: continue
 
                             val content: String? = delta.getContentString()
@@ -167,12 +168,11 @@ class OpenAICompatibleProvider(
 
     private fun LLMMessage.toOpenAIMessage(): OpenAIMessage {
         return when (role) {
-            "tool" -> OpenAIMessage(
+            "tool","function" -> OpenAIMessage(
                 role = "tool",
                 tool_call_id = toolCallId,
                 content = JsonPrimitive(content)
             )
-
             else -> {
                 if (images.isEmpty()) {
                     OpenAIMessage(

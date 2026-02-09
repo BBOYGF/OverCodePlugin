@@ -23,12 +23,20 @@ class InsertToAIAction : AnAction() {
             return
         }
         // 获取文件信息（可选，用于提供上下文）
+
         val psiFile = e.getData(CommonDataKeys.PSI_FILE)
-        val fileName = psiFile?.name ?: "未知文件"
+        val filePath = psiFile?.virtualFile?.path ?: "未知路径"
         val language = psiFile?.language?.displayName ?: "未知语言"
+
+        // 获取行号范围
+        val selectionModel = editor.selectionModel
+        val startLine = editor.document.getLineNumber(selectionModel.selectionStart) + 1
+        val endLine = editor.document.getLineNumber(selectionModel.selectionEnd) + 1
+
         // 使用可配置的 Prompt 模板
-        val messageToAI =  buildString {
-            appendLine("文件名：$fileName")
+        val messageToAI = buildString {
+            appendLine("文件路径：$filePath")
+            appendLine("行号范围：$startLine - $endLine")
             appendLine("语言：$language")
             appendLine()
             appendLine("```$language")

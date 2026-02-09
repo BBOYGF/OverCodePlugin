@@ -393,7 +393,7 @@ class HomeViewModel(
             thoughtSignature = callList.firstOrNull()?.id
         )
         chatMessageVos = chatMessageVos + assistantMessage
-        dbService?.saveMessage(assistantMessage)
+        dbService?.saveMessage(assistantMessage, currentSessionId)
         uiScope.launch { onScrollToBottom() }
 
         // 并行执行工具
