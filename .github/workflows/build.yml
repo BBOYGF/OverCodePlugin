@@ -229,7 +229,7 @@ jobs:
         run: |
           gh api repos/${{ github.repository }}/releases \
             --jq '.[] | select(.draft == true) | .id' \
-            | xargs -I '{}' gh api -X DELETE repos/{owner}/{repo}/releases/{}
+            | xargs -I '{}' gh api -X DELETE repos/${{ github.repository }}/releases/{}
 
       # Create a new release draft which is not publicly visible and requires manual acceptance
       - name: Create Release Draft
