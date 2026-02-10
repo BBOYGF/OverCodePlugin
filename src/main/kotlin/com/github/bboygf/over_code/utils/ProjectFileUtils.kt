@@ -453,7 +453,7 @@ object ProjectFileUtils {
     /**
      * 提交文档修改并执行局部代码格式化
      */
-    private fun commitAndFormat(project: Project, document: Document, startOffset: Int, endOffset: Int) {
+    internal fun commitAndFormat(project: Project, document: Document, startOffset: Int, endOffset: Int) {
         val psiDocumentManager = PsiDocumentManager.getInstance(project)
         psiDocumentManager.commitDocument(document)
         val psiFile = psiDocumentManager.getPsiFile(document)
@@ -721,5 +721,47 @@ object ProjectFileUtils {
         val virtualFile = findVirtualFile(filePath)
             ?: return "### ❌ 文件未找到\n路径: `$filePath`"
         return reviewSingleFileInternal(project, virtualFile)
+    }
+
+    /**
+     * 智能文本替换核心方法 - 委托给 SmartReplacer
+     *
+     * @param content 原始内容
+     * @param oldString 要替换的文本
+     * @param newString 新文本
+     * @param replaceAll 是否替换所有匹配项
+     * @return 替换后的内容
+     * @throws IllegalArgumentException 如果 oldString 未找到或有多个匹配（非 replaceAll 模式）
+     */
+    fun smartReplace(content: String, oldString: String, newString: String, replaceAll: Boolean = false): String {
+        return SmartReplacer.smartReplace(content, oldString, newString, replaceAll)
+    }
+
+    /**
+     * 根据搜索文本替换文件内容 - 委托给 SmartReplacer
+     *
+     * @param project 项目对象
+     * @param filePath 文件绝对路径
+     * @param oldString 要替换的文本
+     * @param newString 新文本
+     * @param replaceAll 是否替换所有匹配项
+     * @return 操作结果信息
+     */
+    fun editFileBySearch(
+        project: Project,
+        filePath: String,
+        oldString: String,
+        newString: String,
+        replaceAll: Boolean = false
+    ): String {
+        return SmartReplacer.editFileBySearch(
+            project = project,
+            filePath = sanitizePath(filePath),
+            oldString = oldString,
+            newString = newString,
+            replaceAll = replaceAll,
+            virtualFileFinder = ::findVirtualFile,
+            commitAndFormat = ::commitAndFormat
+        )
     }
 }

@@ -4,6 +4,7 @@ import com.github.bboygf.over_code.po.LlmToolDefinition
 import com.intellij.openapi.project.Project
 import kotlinx.serialization.json.*
 import com.github.bboygf.over_code.enums.ChatPattern
+import kotlinx.serialization.json.buildJsonObject
 
 /**
  * LLM 工具接口，统一管理元数据和执行逻辑
@@ -301,6 +302,65 @@ object FindClassByNameTool : LlmTool {
     }
 }
 
+object EditFileBySearchTool : LlmTool {
+
+    override val name: String = "edit_file_by_search"
+    override val description: String = """
+        在文件中执行字符串的精确替换
+        用法说明：
+            先读后改： 在进行编辑之前，你必须在对话中至少使用过一次 Read（读取）工具。如果你在没有读取文件的情况下尝试编辑，该工具会报错。
+
+            缩进匹配： 在编辑 Read 工具输出的文本时，请务必保留行号前缀之后的精确缩进（制表符/空格）。行号前缀的格式为：空格 + 行号 + 制表符。该制表符之后的所有内容才是匹配所需的实际文件内容。切勿在 oldString（旧字符串）或 newString（新字符串）中包含行号前缀的任何部分。
+
+            优先修改： 始终优先编辑代码库中的现有文件。除非有明确要求，否则绝不创建新文件。
+
+            表情符号限制： 仅在用户明确要求时才使用表情符号。除非被要求，否则避免在文件中添加表情符号。
+
+            匹配失败： 如果在文件中找不到 oldString，编辑将失败并报错：“未在内容中找到 oldString”。
+
+            唯一性要求： 如果 oldString 在文件中多次出现，编辑将失败并报错：“找到多个 oldString，需要更多代码上下文来唯一标识目标匹配项”。此时，请提供包含更多周边代码的更长字符串以确保唯一性，或者使用 replaceAll（替换全部）参数来修改每一个 oldString 实例。
+
+            批量替换： 使用 replaceAll 在整个文件中替换或重命名字符串。例如，当你需要重构变量名时，此参数非常有用。
+    """.trimIndent()
+
+    override val parameters = buildJsonObject {
+        put("type", "object")
+        put("properties", buildJsonObject {
+            putJsonObject("filePath") {
+                put("type", "string")
+                put("description", "文件的绝对路径")
+            }
+            putJsonObject("oldString") {
+                put("type", "string")
+                put("description", "要替换的内容也就是被覆盖的内容")
+            }
+            putJsonObject("newString") {
+                put("type", "string")
+                put("description", "新的内容")
+            }
+            putJsonObject("replaceAll") {
+                put("type", "boolean")
+                put("description", "是否替换所有匹配的内容，默认为false")
+            }
+        })
+
+    }
+    override val isWriteTool: Boolean = true
+
+    override fun execute(
+        project: Project,
+        args: Map<String, JsonElement>,
+        chatMode: ChatPattern
+    ): String {
+        val filePath = args["filePath"]?.jsonPrimitive?.content ?: ""
+        val oldString = args["oldString"]?.jsonPrimitive?.content ?: ""
+        val newString = args["newString"]?.jsonPrimitive?.content ?: ""
+        val replaceAll = args["replaceAll"]?.jsonPrimitive?.boolean ?: false
+        return ProjectFileUtils.editFileBySearch(project, filePath, oldString, newString, replaceAll)
+    }
+
+}
+
 object OrganizeThoughtsTool : LlmTool {
     override val name = "organize_thoughts"
     override val description =
@@ -348,8 +408,9 @@ object ToolRegistry {
         FindClassByNameTool,
         InspectProjectErrorsTool,
         CreateFileOrDirTool,
-        ReplaceCodeByLineTool,
+//        ReplaceCodeByLineTool,
         DeleteFileTool,
-        OrganizeThoughtsTool
+        OrganizeThoughtsTool,
+        EditFileBySearchTool
     )
 }
