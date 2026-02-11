@@ -44,7 +44,7 @@ class GeminiProvider(
                 isLenient = true
             })
         }
-        install(HttpTimeout) { requestTimeoutMillis = 60000 }
+        install(HttpTimeout) { requestTimeoutMillis = 3 * 1000 }
     }
 
     private fun configureProxy(config: CIOEngineConfig) {
@@ -130,7 +130,8 @@ class GeminiProvider(
                             if (data == "[DONE]") break
 
                             try {
-                                val responseObj = Json { ignoreUnknownKeys = true }.decodeFromString<GeminiResponse>(data)
+                                val responseObj =
+                                    Json { ignoreUnknownKeys = true }.decodeFromString<GeminiResponse>(data)
 
                                 val textChunks = mutableListOf<String>()
                                 val thoughtChunks = mutableListOf<String>()
@@ -254,7 +255,7 @@ class GeminiProvider(
             for (i in convertedMessages.indices) {
                 val (role, parts) = convertedMessages[i]
                 val prevContent = finalContents.lastOrNull()
-                
+
                 if (prevContent != null && prevContent.role == role) {
                     val mergedParts = prevContent.parts?.toMutableList() ?: mutableListOf()
                     mergedParts.addAll(parts)

@@ -123,15 +123,18 @@ fun OverCodeChatUI(project: Project? = null) {
 
     // 加载历史消息
     LaunchedEffect(viewModel.currentSessionId) {
-        viewModel.loadMessages(viewModel.currentSessionId)
+        if (viewModel.currentSessionId.isNotBlank()) {
+            viewModel.loadMessages(viewModel.currentSessionId)
+        }
         if (viewModel.chatMessageVos.isNotEmpty()) {
             try {
-                listState.animateScrollToItem(viewModel.chatMessageVos.size - 1)
+                listState.scrollToItem(viewModel.chatMessageVos.size - 1)
             } catch (e: Exception) {
                 println("滚动到最后异常" + e.message)
             }
         }
     }
+
     LaunchedEffect(viewModel.scrollEvents) {
         viewModel.scrollEvents.collect { index ->
             if (index >= 0) {

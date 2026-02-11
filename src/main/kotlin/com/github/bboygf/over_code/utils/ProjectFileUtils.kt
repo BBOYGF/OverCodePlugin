@@ -92,7 +92,9 @@ object ProjectFileUtils {
         return sb.toString()
     }
 
-
+    /**
+     * 不包含的目录活文件
+     */
     private fun shouldInclude(file: VirtualFile, project: Project): Boolean {
         if (file.isDirectory) return false
 
@@ -105,7 +107,7 @@ object ProjectFileUtils {
         if (fileIndex.isInLibraryClasses(file) || fileIndex.isInLibrarySource(file)) return false
 
         // 3. 基础过滤：排除特定后缀
-        val ignoredExtensions = setOf("class", "jar", "exe", "dll", "pyc", "png", "jpg", "jpeg", "gif", "bmp")
+        val ignoredExtensions = setOf("class", "jar", "exe", "dll", "pyc", "png", "jpg", "jpeg", "gif", "bmp","sql","log")
         if (ignoredExtensions.contains(file.extension?.lowercase())) return false
 
         return true
@@ -616,7 +618,7 @@ object ProjectFileUtils {
                     // 2. 综合判断：Wolf 标记或 PSI 语法错误
                     val hasError = wolf.isProblemFile(virtualFile) || run {
                         val psiFile = PsiManager.getInstance(project).findFile(virtualFile)
-                        psiFile != null && com.intellij.psi.util.PsiTreeUtil.hasErrorElements(psiFile)
+                        psiFile != null && PsiTreeUtil.hasErrorElements(psiFile)
                     }
 
                     if (hasError) errorFiles.add(virtualFile)
@@ -689,7 +691,7 @@ object ProjectFileUtils {
             }
 
             // 构造该文件的表格
-            val relativePath = virtualFile.path.removePrefix(project.basePath ?: "")
+            val relativePath = virtualFile.path
             sb.append("#### 📄 文件: `$relativePath`\n")
             sb.append("| 行号 | 类型 | 错误描述 | 问题代码 |\n")
             sb.append("| :--- | :--- | :--- | :--- |\n")

@@ -82,6 +82,7 @@ class ModelConfigViewModel(
     fun addModelConfig(config: ModelConfigInfo) {
         dbService.addModelConfig(config)
         loadModelConfigs()
+
         hideAddDialog()
     }
     

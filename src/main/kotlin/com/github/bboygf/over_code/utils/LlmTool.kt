@@ -387,7 +387,7 @@ object OrganizeThoughtsTool : LlmTool {
         } else {
             """
             【当前为执行模式】
-            1. 请结合之前的计划和上下文，使用修改类工具（如 replace_code_by_line, create_file_or_dir 等）对代码进行实际修改。
+            1. 请结合之前的计划和上下文，使用修改类工具（如 edit_file_by_search, create_file_or_dir 等）对代码进行实际修改。
             2. 每次修改完成后，必须使用 inspect_project_errors 或 review_code_by_file 工具检查代码是否报错。
             3. 如果出现报错，请继续分析并修复，直到所有相关逻辑修改完毕且无编译错误。
           

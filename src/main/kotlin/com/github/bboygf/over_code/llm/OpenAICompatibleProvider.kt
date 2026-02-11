@@ -53,7 +53,7 @@ class OpenAICompatibleProvider(
                 isLenient = true
             })
         }
-        install(HttpTimeout) { requestTimeoutMillis = 100000 }
+        install(HttpTimeout) { requestTimeoutMillis = 200000 }
     }
 
     private fun configureProxy(config: CIOEngineConfig) {

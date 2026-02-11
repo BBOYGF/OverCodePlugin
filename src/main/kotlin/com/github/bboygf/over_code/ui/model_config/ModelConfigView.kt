@@ -17,6 +17,7 @@ import androidx.compose.ui.awt.ComposePanel
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.github.bboygf.over_code.services.ChatDatabaseService
+import com.github.bboygf.over_code.services.HomeViewModelService
 import com.github.bboygf.over_code.ui.OtherSettings.OtherConfigurable
 import com.github.bboygf.over_code.ui.prompt_config.PromptConfigScreen
 import com.github.bboygf.over_code.vo.ModelConfigInfo
@@ -31,6 +32,7 @@ import javax.swing.JComponent
 class ModelConfigurable(private val project: Project) : Configurable {
 
     private val dbService = ChatDatabaseService.getInstance(project)
+    private val homeViewModelService = project.getService(HomeViewModelService::class.java)
     private var composePanel: ComposePanel? = null
 
     override fun getDisplayName(): String = "Over Code 配置"
@@ -45,7 +47,7 @@ class ModelConfigurable(private val project: Project) : Configurable {
                         modifier = Modifier.fillMaxSize(),
                         color = Color(0xFF1E1F22)
                     ) {
-                        UnifiedConfigScreen(dbService)
+                        UnifiedConfigScreen(dbService,homeViewModelService)
                     }
                 }
             }
@@ -67,7 +69,7 @@ class ModelConfigurable(private val project: Project) : Configurable {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UnifiedConfigScreen(dbService: ChatDatabaseService) {
+fun UnifiedConfigScreen(dbService: ChatDatabaseService, homeViewModelService: HomeViewModelService) {
     var selectedTabIndex by remember { mutableStateOf(0) }
     val tabs = listOf("模型配置", "Prompt 模板", "其他设置")
 
@@ -90,13 +92,13 @@ fun UnifiedConfigScreen(dbService: ChatDatabaseService) {
                     selected = selectedTabIndex == index,
                     onClick = { selectedTabIndex = index },
                     text = { Text(title) },
-                    )
+                )
             }
         }
 
         // Tab 内容
         when (selectedTabIndex) {
-            0 -> ModelConfigScreen(dbService)
+            0 -> ModelConfigScreen(dbService, homeViewModelService)
             1 -> PromptConfigScreen(dbService)
             2 -> OtherConfigurable(dbService)
         }
@@ -104,7 +106,7 @@ fun UnifiedConfigScreen(dbService: ChatDatabaseService) {
 }
 
 @Composable
-fun ModelConfigScreen(dbService: ChatDatabaseService) {
+fun ModelConfigScreen(dbService: ChatDatabaseService, homeViewModelService: HomeViewModelService) {
     println("[ModelConfigScreen] Rendering...")
 
     // ViewModel
@@ -208,6 +210,7 @@ fun ModelConfigScreen(dbService: ChatDatabaseService) {
             onDismiss = { viewModel.hideAddDialog() },
             onConfirm = { newConfig ->
                 viewModel.addModelConfig(newConfig)
+                homeViewModelService.viewModel?.loadModelConfigs()
             }
         )
     }
@@ -278,7 +281,8 @@ fun ModelConfigDialog(
     var showProviderMenu by remember { mutableStateOf(false) }
     var useProxy by remember { mutableStateOf(config?.useProxy ?: false) }
 
-    val providers = listOf("openai", "gemini","minmax", "ollama", "zhipu", "qwen", "deepseek", "moonshot", "custom","anthropic")
+    val providers =
+        listOf("openai", "gemini", "minmax", "ollama", "zhipu", "qwen", "deepseek", "moonshot", "custom", "anthropic")
 
     // 预设配置
     LaunchedEffect(provider) {

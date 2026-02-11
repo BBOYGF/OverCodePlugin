@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.github.bboygf.over_code.LAST_SESSION
 import com.github.bboygf.over_code.enums.ChatPattern
 import com.github.bboygf.over_code.enums.ChatRole
 import com.github.bboygf.over_code.llm.LLMService
@@ -32,6 +33,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import com.github.bboygf.over_code.utils.ImageUtils
 import com.github.bboygf.over_code.utils.ProjectFileUtils
 import com.github.bboygf.over_code.utils.ToolRegistry
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonObject
@@ -50,7 +52,7 @@ class HomeViewModel(
     var chatMessageVos by mutableStateOf(listOf<ChatMessageVo>())
         private set
 
-    var currentSessionId by mutableStateOf("default")
+    var currentSessionId by mutableStateOf("")
         private set
 
     var isLoading by mutableStateOf(false)
@@ -87,6 +89,15 @@ class HomeViewModel(
     private val ioScope = CoroutineScope(Dispatchers.IO)
     private val uiScope = CoroutineScope(Dispatchers.Main)
     private var currentJob: Job? = null
+
+    init {
+        ioScope.launch {
+            val lastSession = dbService?.getValue(LAST_SESSION) ?: "default";
+            withContext(Dispatchers.Main) {
+                currentSessionId = lastSession
+            }
+        }
+    }
 
     /**
      * 取消当前正在进行的请求
@@ -135,8 +146,20 @@ class HomeViewModel(
      * 加载指定会话的历史消息
      */
     fun loadMessages(sessionId: String) {
-        currentSessionId = sessionId
-        chatMessageVos = dbService?.loadMessages(sessionId) ?: emptyList()
+        if (sessionId.isEmpty()) return
+        ioScope.launch {
+            chatMessageVos = dbService?.loadMessages(sessionId) ?: emptyList()
+            withContext(Dispatchers.Main) {
+                if (currentSessionId != sessionId) {
+                    currentSessionId = sessionId
+                }
+            }
+            // 只有在 ID 确实变化时才更新“最后打开的会话”到数据库
+            val lastSaved = dbService?.getValue(LAST_SESSION)
+            if (lastSaved != sessionId) {
+                dbService?.addOrUpdateValue(LAST_SESSION, sessionId)
+            }
+        }
     }
 
     /**

@@ -47,7 +47,7 @@ class ClaudeProvider(
                 isLenient = true
             })
         }
-        install(HttpTimeout) { requestTimeoutMillis = 60000 }
+        install(HttpTimeout) { requestTimeoutMillis = 3 * 1000 }
     }
 
     private fun configureProxy(config: CIOEngineConfig) {
