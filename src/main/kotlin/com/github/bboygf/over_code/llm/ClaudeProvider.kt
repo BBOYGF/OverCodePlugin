@@ -47,7 +47,11 @@ class ClaudeProvider(
                 isLenient = true
             })
         }
-        install(HttpTimeout) { requestTimeoutMillis = 3 * 1000 }
+        install(HttpTimeout) {
+            requestTimeoutMillis = 5 * 60 * 1000
+            socketTimeoutMillis = 3 * 60 * 1000
+            connectTimeoutMillis = 10 * 1000
+        }
     }
 
     private fun configureProxy(config: CIOEngineConfig) {
@@ -137,31 +141,35 @@ class ClaudeProvider(
 
                                 "content_block_delta" -> {
                                     val delta = event["delta"]?.jsonObject
-                                    when (delta?.get("type")?.jsonPrimitive?.content) {
-                                        "text_delta" -> onChunk(delta["text"]?.jsonPrimitive?.content ?: "")
-                                        "input_json_delta" -> {
-                                            toolCallsMap[index]?.argsBuilder?.append(
-                                                delta["partial_json"]?.jsonPrimitive?.content ?: ""
-                                            )
-                                        }
+                                    withContext(Dispatchers.Main) {
+                                        when (delta?.get("type")?.jsonPrimitive?.content) {
+                                            "text_delta" -> onChunk(delta["text"]?.jsonPrimitive?.content ?: "")
+                                            "input_json_delta" -> {
+                                                toolCallsMap[index]?.argsBuilder?.append(
+                                                    delta["partial_json"]?.jsonPrimitive?.content ?: ""
+                                                )
+                                            }
 
-                                        "thinking_delta" -> {
-                                            onThought?.invoke(delta["thinking"]?.jsonPrimitive?.content ?: "")
+                                            "thinking_delta" -> {
+                                                onThought?.invoke(delta["thinking"]?.jsonPrimitive?.content ?: "")
+                                            }
                                         }
                                     }
                                 }
 
                                 "content_block_stop" -> {
-                                    toolCallsMap[index]?.let { acc ->
-                                        if (acc.id.isNotEmpty() && acc.name.isNotEmpty()) {
-                                            onToolCall?.invoke(
-                                                LlmToolCall(
-                                                    acc.id,
-                                                    acc.name,
-                                                    acc.argsBuilder.toString()
+                                    withContext(Dispatchers.Main) {
+                                        toolCallsMap[index]?.let { acc ->
+                                            if (acc.id.isNotEmpty() && acc.name.isNotEmpty()) {
+                                                onToolCall?.invoke(
+                                                    LlmToolCall(
+                                                        acc.id,
+                                                        acc.name,
+                                                        acc.argsBuilder.toString()
+                                                    )
                                                 )
-                                            )
-                                            toolCallsMap.remove(index)
+                                                toolCallsMap.remove(index)
+                                            }
                                         }
                                     }
                                 }

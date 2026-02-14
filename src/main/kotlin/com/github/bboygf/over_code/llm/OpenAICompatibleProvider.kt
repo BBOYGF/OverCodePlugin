@@ -53,7 +53,11 @@ class OpenAICompatibleProvider(
                 isLenient = true
             })
         }
-        install(HttpTimeout) { requestTimeoutMillis = 200000 }
+        install(HttpTimeout) {
+            requestTimeoutMillis = 5 * 60 * 1000
+            socketTimeoutMillis = 3 * 60 * 1000
+            connectTimeoutMillis = 10 * 1000
+        }
     }
 
     private fun configureProxy(config: CIOEngineConfig) {
@@ -131,9 +135,11 @@ class OpenAICompatibleProvider(
                             val delta = responseObj.choices.firstOrNull()?.delta ?: continue
 
                             val content: String? = delta.getContentString()
-                            if (!content.isNullOrEmpty()) onChunk(content)
+                            withContext(Dispatchers.Main) {
+                                if (!content.isNullOrEmpty()) onChunk(content)
 
-                            delta.reasoning_content?.let { onThought?.invoke(it) }
+                                delta.reasoning_content?.let { onThought?.invoke(it) }
+                            }
 
                             delta.tool_calls?.forEach { tc ->
                                 val idx = tc.index ?: 0
@@ -148,12 +154,14 @@ class OpenAICompatibleProvider(
                         }
                     }
                     if (toolCallsMap.isNotEmpty()) {
-                        toolCallsMap.keys.sorted().forEach { idx ->
-                            toolCallsMap[idx]?.let { acc ->
-                                if (acc.id.isNotEmpty() || acc.name.isNotEmpty()) {
-                                    onToolCall?.invoke(
-                                        LlmToolCall(acc.id, acc.name, acc.argsBuilder.toString())
-                                    )
+                        withContext(Dispatchers.Main) {
+                            toolCallsMap.keys.sorted().forEach { idx ->
+                                toolCallsMap[idx]?.let { acc ->
+                                    if (acc.id.isNotEmpty() || acc.name.isNotEmpty()) {
+                                        onToolCall?.invoke(
+                                            LlmToolCall(acc.id, acc.name, acc.argsBuilder.toString())
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -168,11 +176,12 @@ class OpenAICompatibleProvider(
 
     private fun LLMMessage.toOpenAIMessage(): OpenAIMessage {
         return when (role) {
-            "tool","function" -> OpenAIMessage(
+            "tool", "function" -> OpenAIMessage(
                 role = "tool",
                 tool_call_id = toolCallId,
                 content = JsonPrimitive(content)
             )
+
             else -> {
                 if (images.isEmpty()) {
                     OpenAIMessage(

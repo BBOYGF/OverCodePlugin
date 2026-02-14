@@ -44,7 +44,11 @@ class GeminiProvider(
                 isLenient = true
             })
         }
-        install(HttpTimeout) { requestTimeoutMillis = 3 * 1000 }
+        install(HttpTimeout) {
+            requestTimeoutMillis = 5 * 60 * 1000
+            socketTimeoutMillis = 3 * 60 * 1000
+            connectTimeoutMillis = 10 * 1000
+        }
     }
 
     private fun configureProxy(config: CIOEngineConfig) {
@@ -166,14 +170,16 @@ class GeminiProvider(
                                     return@execute
                                 }
 
-                                thoughtChunks.forEach { onThought?.invoke(it) }
-                                textChunks.forEach { onChunk(it) }
-
-                                geminiParts.forEach { part ->
-                                    convertToLlmToolCall(part, callIndex++)?.let { call ->
-                                        onToolCall?.invoke(call)
+                                withContext(Dispatchers.Main) {
+                                    thoughtChunks.forEach { onThought?.invoke(it) }
+                                    textChunks.forEach { onChunk(it) }
+                                    geminiParts.forEach { part ->
+                                        convertToLlmToolCall(part, callIndex++)?.let { call ->
+                                            onToolCall?.invoke(call)
+                                        }
                                     }
                                 }
+
                             } catch (parseError: Exception) {
                                 Log.info("解析 Gemini 响应块失败: ${parseError.message}")
                             }
