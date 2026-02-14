@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposePanel
@@ -106,6 +107,9 @@ fun OverCodeChatUI(project: Project? = null) {
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
+    // 跟踪用户是否滚动到非底部位置
+    var isUserAtBottom by remember { mutableStateOf(true) }
+
     // 注册输入框文本变更回调
     LaunchedEffect(viewModel) {
         viewModel.onInputTextChange = { text ->
@@ -140,6 +144,20 @@ fun OverCodeChatUI(project: Project? = null) {
             if (index >= 0) {
                 listState.animateScrollToItem(index)
             }
+        }
+    }
+
+    // 监听滚动状态，判断用户是否在底部
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            // 获取当前可见的最后一个 item 的索引
+            val lastVisibleItem = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val totalItems = listState.layoutInfo.totalItemsCount
+
+            // 判断：如果最后可见项是列表最后一项，或接近最后一项（距离 1-2 个 item）
+            lastVisibleItem >= totalItems - 2
+        }.collect { isAtBottom ->
+            isUserAtBottom = isAtBottom
         }
     }
 
@@ -284,11 +302,16 @@ fun OverCodeChatUI(project: Project? = null) {
                         val userInput = inputText
                         inputText = TextFieldValue("")
                         viewModel.sendMessage(userInput.text) {
-                            // 自动滚动到底部
+                            // 只有当用户在底部时才自动滚动
                             coroutineScope.launch {
-                                if (viewModel.chatMessageVos.isNotEmpty()) {
+                                if (viewModel.chatMessageVos.isNotEmpty() && isUserAtBottom) {
                                     try {
-                                        listState.animateScrollToItem(viewModel.chatMessageVos.size - 1)
+                                        // 使用 scrollToItem 并设置一个大的 scrollOffset 来滚动到 item 底部
+                                        // 这样即使消息很长，也能看到最新的内容
+                                        listState.scrollToItem(
+                                            index = viewModel.chatMessageVos.size - 1,
+                                            scrollOffset = Int.MAX_VALUE
+                                        )
                                     } catch (e: Exception) {
                                         println("获取最后一行数据异常！" + e.message)
                                     }

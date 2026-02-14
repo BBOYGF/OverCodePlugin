@@ -213,9 +213,12 @@ class GeminiProvider(
                 "tool", "function" -> "user"
                 else -> "user"
             }
-
+            // 为了节省 token 可以注销掉折行代码，也就是不上传思考过程到llm
             if (!msg.thought.isNullOrEmpty()) {
-                parts.add(GeminiPart(thought = JsonPrimitive(msg.thought)))
+                parts.add(GeminiPart(
+                    thought = JsonPrimitive(true),
+                    text = msg.thought
+                ))
             }
 
             if (msg.content.isNotEmpty() && msg.role != "tool" && msg.role != "function") {
@@ -275,7 +278,8 @@ class GeminiProvider(
         return GeminiRequest(
             contents = finalContents,
             systemInstruction = systemInstruction,
-            tools = tools
+            tools = tools,
+            generationConfig=GeminiGenerationConfig(thinkingConfig = GeminiThinkingConfig(includeThoughts = true))
         ).also {
             Log.info("Gemini Request: ${Json.encodeToString(it)}")
         }

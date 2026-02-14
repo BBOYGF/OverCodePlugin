@@ -367,6 +367,20 @@ class HomeViewModel(
             return
         }
 
+        // 创建一个临时的 AI 消息用于实时显示流式输出
+        val streamingMessageId = System.currentTimeMillis().toString()
+        var streamingMessage = ChatMessageVo(
+            id = streamingMessageId,
+            content = "",
+            chatRole = ChatRole.助理,
+            thought = null
+        )
+
+        // 先添加到列表
+        withContext(Dispatchers.Main) {
+            chatMessageVos = chatMessageVos + streamingMessage
+        }
+
         // 调用流式 API
         service.chatStream(
             messages = history,
@@ -374,6 +388,13 @@ class HomeViewModel(
             onChunk = { chunk ->
                 if (chunk.isNotEmpty()) {
                     contentBuilder.append(chunk)
+                    // 实时更新消息内容
+                    streamingMessage = streamingMessage.copy(content = contentBuilder.toString())
+                    uiScope.launch {
+                        chatMessageVos = chatMessageVos.map {
+                            if (it.id == streamingMessageId) streamingMessage else it
+                        }
+                    }
                     onScrollToBottom()
                 }
             },
@@ -382,21 +403,30 @@ class HomeViewModel(
             },
             onThought = { thought ->
                 currentThought.append(thought)
+                // 实时更新思考内容
+                streamingMessage = streamingMessage.copy(thought = currentThought.toString())
+                uiScope.launch {
+                    chatMessageVos = chatMessageVos.map {
+                        if (it.id == streamingMessageId) streamingMessage else it
+                    }
+                }
             }
         )
 
-        // 如果没有工具调用，直接返回
+        // 如果没有工具调用，保存最终消息并返回
         if (callList.isEmpty()) {
             val responseText = contentBuilder.toString()
             if (responseText.isNotEmpty()) {
-                val aiMessage = ChatMessageVo(
-                    id = System.currentTimeMillis().toString(),
+                val finalMessage = streamingMessage.copy(
                     content = responseText,
-                    chatRole = ChatRole.助理,
                     thought = currentThought.toString().takeIf { it.isNotEmpty() }
                 )
-                chatMessageVos = chatMessageVos + aiMessage
-                dbService?.saveMessage(aiMessage, currentSessionId)
+                withContext(Dispatchers.Main) {
+                    chatMessageVos = chatMessageVos.map {
+                        if (it.id == streamingMessageId) finalMessage else it
+                    }
+                }
+                dbService?.saveMessage(finalMessage, currentSessionId)
                 uiScope.launch { onScrollToBottom() }
             }
             return
@@ -407,15 +437,18 @@ class HomeViewModel(
             "${it.functionName}: ${it.arguments}"
         }
 
-        val assistantMessage = ChatMessageVo(
-            id = System.currentTimeMillis().toString(),
+        // 更新流式消息为包含工具调用的最终版本
+        val assistantMessage = streamingMessage.copy(
             content = contentBuilder.toString().ifEmpty { "parallel calling tools:\n$toolCallDescription" },
-            chatRole = ChatRole.助理,
             thought = currentThought.toString().takeIf { it.isNotEmpty() },
             toolCalls = callList.toList(),
             thoughtSignature = callList.firstOrNull()?.id
         )
-        chatMessageVos = chatMessageVos + assistantMessage
+        withContext(Dispatchers.Main) {
+            chatMessageVos = chatMessageVos.map {
+                if (it.id == streamingMessageId) assistantMessage else it
+            }
+        }
         dbService?.saveMessage(assistantMessage, currentSessionId)
         uiScope.launch { onScrollToBottom() }
 

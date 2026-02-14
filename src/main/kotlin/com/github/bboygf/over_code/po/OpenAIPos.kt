@@ -20,9 +20,10 @@ data class OpenAIMessage(
     val role: String? = null,
     val content: JsonElement? = null,
     val reasoning_content: String? = null,
+    val reasoning: String? = null,
     val tool_calls: List<OpenAIToolCall>? = null, // 模型返回的函数调用
     val tool_call_id: String? = null             // 角色为 "tool" 时必须提供
-){
+) {
     // 辅助方法：方便获取文本内容 (用于解析响应)
     fun getContentString(): String? {
         return when (content) {
@@ -46,6 +47,7 @@ data class OpenAIContentPart(
 data class OpenAIImageUrl(
     val url: String // "data:image/jpeg;base64,..." 或网络链接
 )
+
 @Serializable
 data class OpenAIFunction(
     val name: String,
@@ -59,6 +61,7 @@ data class OpenAITool(
     val type: String = "function",
     val function: OpenAIFunction
 )
+
 @Serializable
 data class OpenAIToolCall(
     val index: Int? = null, // 新增：流式返回中的索引

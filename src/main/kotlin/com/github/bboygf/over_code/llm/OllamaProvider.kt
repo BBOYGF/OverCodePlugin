@@ -119,6 +119,7 @@ class OllamaProvider(
                                 if (!content.isNullOrEmpty()) onChunk(content)
 
                                 delta.reasoning_content?.let { onThought?.invoke(it) }
+                                delta.reasoning?.let { onThought?.invoke(it) }
                             }
 
                             delta.tool_calls?.forEach { tc ->
