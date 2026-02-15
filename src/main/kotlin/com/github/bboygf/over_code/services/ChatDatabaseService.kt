@@ -87,7 +87,7 @@ class ChatDatabaseService(private val project: Project) {
                     it[content] = message.content
                     it[chatRole] = message.chatRole
                     it[timestamp] = message.timestamp
-                it[ChatMessages.sessionId] = sessionId
+                    it[ChatMessages.sessionId] = sessionId
                     it[thought] = message.thought
                     it[toolCalls] = message.toolCalls?.let { calls -> Json.encodeToString(calls) }
                     it[toolCallId] = message.toolCallId
@@ -150,6 +150,23 @@ class ChatDatabaseService(private val project: Project) {
         }
         return sessionId
     }
+
+    fun getSessionBySessionId(sessionId: String): SessionInfo? {
+        return transaction(database) {
+            ChatSessions.selectAll()
+                .filter { it[ChatSessions.sessionId] == sessionId }
+                .map { row ->
+                    SessionInfo(
+                        sessionId = row[ChatSessions.sessionId],
+                        title = row[ChatSessions.title],
+                        createdAt = row[ChatSessions.createdAt],
+                        updatedAt = row[ChatSessions.updatedAt]
+                    )
+                }
+                .firstOrNull()
+        }
+    }
+
 
     /**
      * 获取所有会话
@@ -222,7 +239,7 @@ class ChatDatabaseService(private val project: Project) {
         return "session_${System.currentTimeMillis()}_${(1000..9999).random()}"
     }
 
-    // ==================== 模型管理 ====================
+// ==================== 模型管理 ====================
 
     /**
      * 添加模型配置
@@ -363,7 +380,7 @@ class ChatDatabaseService(private val project: Project) {
         return "model_${System.currentTimeMillis()}_${(1000..9999).random()}"
     }
 
-    // ==================== Prompt 模板管理 ====================
+// ==================== Prompt 模板管理 ====================
 
     /**
      * 初始化默认 Prompt 模板
@@ -566,7 +583,7 @@ class ChatDatabaseService(private val project: Project) {
     /**
      * add Key Value
      */
-    // 2. 添加或更新值 (Upsert)
+// 2. 添加或更新值 (Upsert)
     fun addOrUpdateValue(targetKey: String, targetValue: String) {
         transaction {
             // 尝试先查询是否存在

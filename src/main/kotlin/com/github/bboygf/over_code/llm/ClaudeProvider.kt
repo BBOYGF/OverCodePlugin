@@ -4,7 +4,6 @@ import com.github.bboygf.over_code.po.LLMMessage
 import com.github.bboygf.over_code.po.LlmToolCall
 import com.github.bboygf.over_code.po.LlmToolDefinition
 import com.github.bboygf.over_code.utils.Log
-import com.intellij.openapi.diagnostic.thisLogger
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.*
@@ -32,7 +31,6 @@ class ClaudeProvider(
     private val port: String
 ) : LLMProvider {
 
-    private val logger = thisLogger()
 
     private val client = HttpClient(CIO) {
         if (useProxy) {
@@ -59,7 +57,7 @@ class ClaudeProvider(
             val proxyUrl = "http://${host}:${port}"
             config.proxy = ProxyBuilder.http(proxyUrl)
         } catch (e: Exception) {
-            logger.warn("ClaudeProvider: 自动获取代理设置失败，将尝试直连", e)
+            Log.error("ClaudeProvider: 自动获取代理设置失败，将尝试直连", e)
         }
     }
 
@@ -117,7 +115,7 @@ class ClaudeProvider(
 
                     while (!channel.isClosedForRead) {
                         val line = channel.readUTF8Line() ?: break
-                        Log.info("Claude Response: $line")
+//                        Log.info("Claude Response: $line")
                         if (!line.startsWith("data:")) continue
 
                         val data = line.removePrefix("data:").trim()
@@ -175,11 +173,12 @@ class ClaudeProvider(
                                 }
                             }
                         } catch (e: Exception) {
-                            Log.error("解析 Claude 响应分片失败: ${e.message}")
+                            Log.error("解析 Claude 响应分片失败,请求：$requestBody 响应：$line", e)
                         }
                     }
                 }
             } catch (e: Exception) {
+                Log.error("Claude 请求异常", e)
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 throw LLMException("流式调用 Claude API 失败: ${e.message}", e)
             }
@@ -230,11 +229,14 @@ class ClaudeProvider(
                 messageGroups.forEach { group ->
                     val firstMsg = group.first()
                     addJsonObject {
-                        put("role", if (firstMsg.role == "tool") "user" else firstMsg.role)
+                        put(
+                            "role",
+                            if (firstMsg.role == "tool" || firstMsg.role == "function") "user" else firstMsg.role
+                        )
                         putJsonArray("content") {
                             group.forEach { msg ->
                                 when (msg.role) {
-                                    "tool" -> {
+                                    "tool", "function" -> {
                                         addJsonObject {
                                             put("type", "tool_result")
                                             put("tool_use_id", msg.toolCallId)
@@ -276,7 +278,7 @@ class ClaudeProvider(
                 }
             }
         }.also {
-            Log.info("Claude Request: ${it.toString()}")
+//            Log.info("Claude Request: ${it.toString()}")
         }
     }
 

@@ -61,7 +61,7 @@ class LLMService(private val project: Project) {
                 )
             }
 
-            "claude", "anthropic" -> {
+            "claude", "anthropic", "minmax" -> {
                 ClaudeProvider(
                     apiKey = config.apiKey,
                     model = config.modelName.ifBlank { "claude-3-5-sonnet-20240620" },

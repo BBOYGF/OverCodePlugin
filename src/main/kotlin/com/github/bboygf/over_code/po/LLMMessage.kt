@@ -29,7 +29,7 @@ data class LlmToolCall(
  */
 @Serializable
 data class LLMMessage(
-    val role: String,                    // "user", "assistant", "system", "tool"
+    var role: String,                    // "user", "assistant", "system", "tool"
     val content: String,                 // 消息文本内容
     val images: List<String> = emptyList(), // Base64 图片列表
 

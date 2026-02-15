@@ -240,6 +240,11 @@ class HomeViewModel(
         // 优化：简化 List 更新逻辑
         chatMessageVos = chatMessageVos + userMessage
         dbService?.saveMessage(userMessage, currentSessionId)
+        val sessionInfo = dbService?.getSessionBySessionId(currentSessionId)
+
+        if (sessionInfo != null && sessionInfo.title == "新对话") {
+            dbService.updateSessionTitle(currentSessionId, userInput.substring(0, userInput.length.coerceAtMost(100)))
+        }
 
         // 2. 构建 LLM 历史 (注意：此时 UI 上的 messages 已经包含了 userMessage)
         val llmMessages = chatMessageVos.mapIndexed { index, msg ->
@@ -266,7 +271,6 @@ class HomeViewModel(
         currentJob = ioScope.launch {
             // 用于累计最终显示的文本
             val contentBuilder = StringBuilder()
-            var errorOccurred = false
             try {
                 processChatTurn(
                     history = llmMessages,
@@ -280,7 +284,6 @@ class HomeViewModel(
                     return@launch
                 }
                 e.printStackTrace()
-                errorOccurred = true
                 contentBuilder.append("\n[系统错误: ${e.message}]")
             } finally {
                 isLoading = false
@@ -288,6 +291,7 @@ class HomeViewModel(
                 currentJob = null
             }
         }
+
     }
 
 
@@ -371,7 +375,7 @@ class HomeViewModel(
         val streamingMessageId = System.currentTimeMillis().toString()
         var streamingMessage = ChatMessageVo(
             id = streamingMessageId,
-            content = "",
+            content = "思考中...",
             chatRole = ChatRole.助理,
             thought = null
         )

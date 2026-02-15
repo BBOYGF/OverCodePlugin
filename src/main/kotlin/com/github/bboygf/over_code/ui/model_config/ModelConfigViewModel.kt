@@ -127,7 +127,7 @@ class ModelConfigViewModel(
         return when (provider) {
             "openai" -> "https://api.openai.com/v1" to "gpt-3.5-turbo"
             "gemini" -> "https://generativelanguage.googleapis.com/v1beta/models" to "gemini-3-flash-preview"
-            "minmax" -> "https://api.minimaxi.com/v1" to "MiniMax-M2.1"
+            "minmax" -> "https://api.minimaxi.com/anthropic" to "MiniMax-M2.5"
             "ollama" -> "http://localhost:11434" to "llama2"
             "zhipu" -> "https://open.bigmodel.cn/api/paas/v4" to "glm-4"
             "qwen" -> "https://dashscope.aliyuncs.com/compatible-mode/v1" to "qwen-plus"

@@ -147,15 +147,25 @@ fun OverCodeChatUI(project: Project? = null) {
         }
     }
 
-    // 监听滚动状态，判断用户是否在底部
+    // 监听滚动状态，判断用户是否在底部（最后一个item的最后位置）
     LaunchedEffect(listState) {
         snapshotFlow {
-            // 获取当前可见的最后一个 item 的索引
-            val lastVisibleItem = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val visibleItems = listState.layoutInfo.visibleItemsInfo
+            val lastVisibleItem = visibleItems.lastOrNull()
             val totalItems = listState.layoutInfo.totalItemsCount
 
-            // 判断：如果最后可见项是列表最后一项，或接近最后一项（距离 1-2 个 item）
-            lastVisibleItem >= totalItems - 2
+            // 判断条件：
+            // 1. 最后可见item必须是最后一个item
+            // 2. 并且滚动偏移量要足够接近底部（距离底部 < 50dp）
+            val isLastItem = lastVisibleItem?.index == totalItems - 1
+            val scrollOffset = lastVisibleItem?.offset ?: 0
+            val itemSize = lastVisibleItem?.size ?: 0
+            val viewportEndOffset = listState.layoutInfo.viewportEndOffset
+
+            // 计算最后一个item底部距离视口底部的距离
+            val distanceToBottom = viewportEndOffset - (scrollOffset + itemSize)
+
+            isLastItem && distanceToBottom <= 50
         }.collect { isAtBottom ->
             isUserAtBottom = isAtBottom
         }

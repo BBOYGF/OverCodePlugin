@@ -557,7 +557,9 @@ object SmartReplacer {
                         resultMessage = "### ✅ 成功: 文件已更新 [${virtualFile.name}]\n" +
                                 "- 原始内容长度: $originalContentLength 字符\n" +
                                 "- 新内容长度: ${contentToWrite.length} 字符\n" +
-                                "- 替换模式: ${if (replaceAll) "全部替换" else "单处替换"}"
+                                "- 替换模式: ${if (replaceAll) "全部替换" else "单处替换"}\n"+
+                                "请调用相关工具检查代码是否报错或者爆红。"
+
                     } else {
                         resultMessage = "### ❌ 失败: 无法获取文档对象用于写入 [${virtualFile.name}]"
                     }
