@@ -238,11 +238,7 @@ fun OverCodeChatUI(project: Project? = null) {
                     }
                     IconButton(onClick = {
                         project?.let {
-                            // 使用配置页面的ID打开设置，而不是类
-                            ShowSettingsUtil.getInstance().showSettingsDialog(
-                                it,
-                                "com.github.bboygf.over_code.ui.model_config.ModelConfigurable"
-                            )
+                            ShowSettingsUtil.getInstance().showSettingsDialog(it, ModelConfigurable::class.java)
                         }
                     }) {
                         Icon(
