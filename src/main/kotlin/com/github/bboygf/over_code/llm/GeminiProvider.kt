@@ -47,7 +47,7 @@ class GeminiProvider(
         install(HttpTimeout) {
             requestTimeoutMillis = 5 * 60 * 1000
             socketTimeoutMillis = 3 * 60 * 1000
-            connectTimeoutMillis = 10 * 1000
+            connectTimeoutMillis = 60 * 1000
         }
     }
 
@@ -93,7 +93,8 @@ class GeminiProvider(
 
                 return@withContext response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text ?: ""
             } catch (e: Exception) {
-                throw LLMException("调用 Gemini API 失败: ${e.message}", e)
+                Log.error("GeminiProvider chat方法调用失败", e)
+                throw LLMException(parseGeminiError(e), e)
             }
         }
     }
@@ -192,7 +193,7 @@ class GeminiProvider(
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                throw LLMException("流式调用 Gemini API 失败: ${e.message}", e)
+                throw LLMException(parseGeminiError(e), e)
             }
         }
     }
@@ -215,10 +216,12 @@ class GeminiProvider(
             }
             // 为了节省 token 可以注销掉折行代码，也就是不上传思考过程到llm
             if (!msg.thought.isNullOrEmpty()) {
-                parts.add(GeminiPart(
-                    thought = JsonPrimitive(true),
-                    text = msg.thought
-                ))
+                parts.add(
+                    GeminiPart(
+                        thought = JsonPrimitive(true),
+                        text = msg.thought
+                    )
+                )
             }
 
             if (msg.content.isNotEmpty() && msg.role != "tool" && msg.role != "function") {
@@ -279,7 +282,7 @@ class GeminiProvider(
             contents = finalContents,
             systemInstruction = systemInstruction,
             tools = tools,
-            generationConfig=GeminiGenerationConfig(thinkingConfig = GeminiThinkingConfig(includeThoughts = true))
+            generationConfig = GeminiGenerationConfig(thinkingConfig = GeminiThinkingConfig(includeThoughts = true))
         ).also {
             Log.info("Gemini Request: ${Json.encodeToString(it)}")
         }
@@ -295,5 +298,49 @@ class GeminiProvider(
         } else {
             "image/jpeg" to base64String
         }
+    }
+
+    /**
+     * 解析 Gemini API 错误，返回友好的错误消息
+     * 根据 HTTP 状态码返回对应的中文提示
+     */
+    private fun parseGeminiError(e: Exception): String {
+        // 尝试从 Ktor 异常中提取 HTTP 状态码
+        val statusCode = extractHttpStatusCode(e)
+
+        return when (statusCode) {
+            400 -> "请求参数无效，请检查输入格式是否正确"
+            403 -> "API权限不足，请检查API Key是否正确"
+            404 -> "请求的资源未找到，请检查模型名称是否正确"
+            429 -> "请求过于频繁，请稍后再试（已超出速率限制）"
+            500 -> "Google服务器内部错误，请稍后重试"
+            503 -> "服务暂时过载，请稍后重试"
+            504 -> "请求处理超时，请减少输入内容或增加超时时间"
+            else -> "调用Gemini API失败: ${e.message}"
+        }
+    }
+
+    /**
+     * 从异常中提取 HTTP 状态码
+     */
+    private fun extractHttpStatusCode(e: Exception): Int? {
+        // 尝试从异常消息中提取状态码
+        val message = e.message ?: return null
+
+        // 常见 Ktor 异常模式: "Server returned(400 - Bad Request)"
+        val regex = "\\((\\d+)\\s*-".toRegex()
+        regex.find(message)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+
+        // 尝试从 cause 中获取
+        var cause: Throwable? = e.cause
+        while (cause != null) {
+            val causeMessage = cause.message
+            if (causeMessage != null) {
+                regex.find(causeMessage)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+            }
+            cause = cause.cause
+        }
+
+        return null
     }
 }

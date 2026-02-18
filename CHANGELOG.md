@@ -3,11 +3,13 @@
 # OverCode Plugin Changelog
 
 ## [Unreleased]
+
+## [1.0.5] - 2026-02-19
+
 ### Added
+
 - v1.0 首次发布
-
 - V1.0.2 优化写功能，采用智能搜索方式找到替换位置替换内容
-
 - V1.0.3 
   - 修复在设置中添加模型后，切回来没看到模型问题
   - 修复没记录上次选中的回话
@@ -19,3 +21,6 @@
   - 优化 Claude 请求数据兼容。
   - 优化聊天是鼠标滚动后被模型回复劫持问题。
   - 优化历史回话标题，使用首次请求前100字。
+
+[Unreleased]: https://github.com/BBOYGF/OverCodePlugin/compare/v1.0.5...HEAD
+[1.0.5]: https://github.com/BBOYGF/OverCodePlugin/commits/v1.0.5

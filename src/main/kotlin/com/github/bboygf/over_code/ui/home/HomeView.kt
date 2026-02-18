@@ -238,7 +238,11 @@ fun OverCodeChatUI(project: Project? = null) {
                     }
                     IconButton(onClick = {
                         project?.let {
-                            ShowSettingsUtil.getInstance().showSettingsDialog(it, ModelConfigurable::class.java)
+                            // 使用配置页面的ID打开设置，而不是类
+                            ShowSettingsUtil.getInstance().showSettingsDialog(
+                                it,
+                                "com.github.bboygf.over_code.ui.model_config.ModelConfigurable"
+                            )
                         }
                     }) {
                         Icon(
@@ -357,6 +361,32 @@ fun OverCodeChatUI(project: Project? = null) {
                 isCancelling = viewModel.isCancelling,
                 onCancel = { viewModel.cancelCurrentRequest() }
             )
+
+            // 错误提示对话框
+            if (viewModel.showErrorDialog) {
+                AlertDialog(
+                    onDismissRequest = { viewModel.dismissError() },
+                    title = {
+                        Text(
+                            text = "请求失败",
+                            color = textPrimaryColor
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = viewModel.errorMessage ?: "未知错误",
+                            color = textSecondaryColor
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { viewModel.dismissError() }) {
+                            Text("关闭")
+                        }
+                    },
+                    containerColor = surfaceColor,
+                    titleContentColor = textPrimaryColor
+                )
+            }
 
         }
     }

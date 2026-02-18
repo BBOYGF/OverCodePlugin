@@ -69,6 +69,13 @@ class HomeViewModel(
 
     var showHistory by mutableStateOf(false)
 
+    // 错误提示状态
+    var errorMessage by mutableStateOf<String?>(null)
+        private set
+
+    var showErrorDialog by mutableStateOf(false)
+        private set
+
     // 模型和模式状态
     var modelConfigs by mutableStateOf(listOf<ModelConfigInfo>())
         private set
@@ -107,6 +114,14 @@ class HomeViewModel(
         currentJob = null
         isCancelling = false
         isLoading = false
+    }
+
+    /**
+     * 关闭错误提示对话框
+     */
+    fun dismissError() {
+        showErrorDialog = false
+        errorMessage = null
     }
 
     // 2. 暴露事件处理函数
@@ -284,7 +299,9 @@ class HomeViewModel(
                     return@launch
                 }
                 e.printStackTrace()
-                contentBuilder.append("\n[系统错误: ${e.message}]")
+                // 显示错误弹窗
+                errorMessage = e.message ?: "未知错误"
+                showErrorDialog = true
             } finally {
                 isLoading = false
                 isCancelling = false

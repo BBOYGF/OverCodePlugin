@@ -18,6 +18,7 @@ import io.ktor.utils.io.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Anthropic Claude LLM Provider
@@ -76,7 +77,8 @@ class ClaudeProvider(
                     response["content"]?.jsonArray?.firstOrNull()?.jsonObject?.get("text")?.jsonPrimitive?.content ?: ""
                 return@withContext content
             } catch (e: Exception) {
-                throw LLMException("调用 Claude API 失败: ${e.message}", e)
+                Log.error("ClaudeProvider chat方法调用失败", e)
+                throw LLMException(parseClaudeError(e), e)
             }
         }
     }
@@ -178,9 +180,8 @@ class ClaudeProvider(
                     }
                 }
             } catch (e: Exception) {
-                Log.error("Claude 请求异常", e)
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                throw LLMException("流式调用 Claude API 失败: ${e.message}", e)
+                if (e is CancellationException) throw e
+                throw LLMException(parseClaudeError(e), e)
             }
         }
     }
@@ -292,5 +293,44 @@ class ClaudeProvider(
         } else {
             "image/jpeg" to base64String
         }
+    }
+
+    /**
+     * 解析 Claude API 错误，返回友好的错误消息
+     * 根据 HTTP 状态码返回对应的中文提示
+     */
+    private fun parseClaudeError(e: Exception): String {
+        val statusCode = extractHttpStatusCode(e)
+
+        return when (statusCode) {
+            400 -> "请求参数无效，请检查输入格式是否正确"
+            401 -> "API认证失败，请检查API Key是否正确"
+            403 -> "API权限不足，请检查API Key权限或IP白名单"
+            429 -> "请求过于频繁，请稍后再试（已超出速率限制）"
+            500 -> "Anthropic服务器内部错误，请稍后重试"
+            503 -> "服务暂时过载，请稍后重试"
+            else -> "调用Claude API失败: ${e.message}"
+        }
+    }
+
+    /**
+     * 从异常中提取 HTTP 状态码
+     */
+    private fun extractHttpStatusCode(e: Exception): Int? {
+        val message = e.message ?: return null
+
+        val regex = "\\((\\d+)\\s*-".toRegex()
+        regex.find(message)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+
+        var cause: Throwable? = e.cause
+        while (cause != null) {
+            val causeMessage = cause.message
+            if (causeMessage != null) {
+                regex.find(causeMessage)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+            }
+            cause = cause.cause
+        }
+
+        return null
     }
 }

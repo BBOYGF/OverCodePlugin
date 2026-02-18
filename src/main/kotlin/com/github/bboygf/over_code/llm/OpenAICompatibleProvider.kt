@@ -27,6 +27,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 
+import kotlin.coroutines.cancellation.CancellationException
+
 /**
  * OpenAI 兼容的 LLM Provider
  * 支持：OpenAI, 智谱GLM, 通义千问, Deepseek, Moonshot 等
@@ -88,7 +90,8 @@ class OpenAICompatibleProvider(
                 val content: String = response.choices.first().message?.getContentString() ?: ""
                 return@withContext content
             } catch (e: Exception) {
-                throw LLMException("调用 LLM API 失败: ${e.message}", e)
+                Log.error("OpenAICompatibleProvider chat方法调用失败", e)
+                throw LLMException(parseOpenAIError(e), e)
             }
         }
     }
@@ -169,9 +172,53 @@ class OpenAICompatibleProvider(
                     }
                 }
             } catch (e: Exception) {
-                Log.error("流式调用 LLM API  失败 行信息：$line: ${e.message}", e)
+                if (e is CancellationException) throw e
+                throw LLMException(parseOpenAIError(e), e)
             }
         }
+    }
+
+    /**
+     * 解析 OpenAI 兼容 API 错误，返回友好的错误消息
+     * 根据 HTTP 状态码返回对应的中文提示
+     */
+    private fun parseOpenAIError(e: Exception): String {
+        // 尝试从 Ktor 异常中提取 HTTP 状态码
+        val statusCode = extractHttpStatusCode(e)
+
+        return when (statusCode) {
+            401 -> "API认证失败，请检查API Key是否正确"
+            403 -> "API权限不足，可能原因：IP未授权或账户不属于任何组织"
+            404 -> "请求的资源未找到，请检查API端点是否正确"
+            429 -> "请求过于频繁或超出配额，请稍后再试或检查您的套餐"
+            500 -> "服务器内部错误，请稍后重试"
+            503 -> "服务暂时过载，请稍后重试"
+            else -> "调用OpenAI兼容API失败: ${e.message}"
+        }
+    }
+
+    /**
+     * 从异常中提取 HTTP 状态码
+     */
+    private fun extractHttpStatusCode(e: Exception): Int? {
+        // 尝试从异常消息中提取状态码
+        val message = e.message ?: return null
+
+        // 常见 Ktor 异常模式: "Server returned(401 - Unauthorized)"
+        val regex = "\\((\\d+)\\s*-".toRegex()
+        regex.find(message)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+
+        // 尝试从 cause 中获取
+        var cause: Throwable? = e.cause
+        while (cause != null) {
+            val causeMessage = cause.message
+            if (causeMessage != null) {
+                regex.find(causeMessage)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+            }
+            cause = cause.cause
+        }
+
+        return null
     }
 
     private fun LLMMessage.toOpenAIMessage(): OpenAIMessage {

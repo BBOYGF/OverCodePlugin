@@ -62,7 +62,8 @@ class OllamaProvider(
                 Log.info("Ollama Response: ${Json.encodeToString(response)}")
                 return@withContext response.choices.first().message?.getContentString() ?: ""
             } catch (e: Exception) {
-                throw LLMException("调用 Ollama API 失败: ${e.message}", e)
+                Log.error("OllamaProvider chat方法调用失败", e)
+                throw LLMException(parseOllamaError(e), e)
             }
         }
     }
@@ -151,7 +152,7 @@ class OllamaProvider(
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                throw LLMException("流式调用 Ollama API 失败: ${e.message}", e)
+                throw LLMException(parseOllamaError(e), e)
             }
         }
     }
@@ -197,6 +198,45 @@ class OllamaProvider(
                 }
             }
         }
+    }
+
+    /**
+     * 解析 Ollama API 错误，返回友好的错误消息
+     * 根据 HTTP 状态码返回对应的中文提示
+     */
+    private fun parseOllamaError(e: Exception): String {
+        val statusCode = extractHttpStatusCode(e)
+
+        return when (statusCode) {
+            400 -> "请求参数无效，请检查输入格式是否正确"
+            404 -> "请求的资源未找到，请检查模型名称是否正确"
+            422 -> "请求参数无效，请检查模型名称和输入格式"
+            429 -> "请求过于频繁，请稍后再试"
+            500 -> "Ollama服务器内部错误，请检查Ollama服务是否正常运行"
+            503 -> "服务暂时不可用，请检查Ollama服务是否启动"
+            else -> "调用Ollama API失败: ${e.message}"
+        }
+    }
+
+    /**
+     * 从异常中提取 HTTP 状态码
+     */
+    private fun extractHttpStatusCode(e: Exception): Int? {
+        val message = e.message ?: return null
+
+        val regex = "\\((\\d+)\\s*-".toRegex()
+        regex.find(message)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+
+        var cause: Throwable? = e.cause
+        while (cause != null) {
+            val causeMessage = cause.message
+            if (causeMessage != null) {
+                regex.find(causeMessage)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+            }
+            cause = cause.cause
+        }
+
+        return null
     }
 }
 
