@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshotFlow
@@ -33,6 +34,7 @@ import com.github.bboygf.over_code.services.HomeViewModelService
 import com.github.bboygf.over_code.ui.component.BottomInputArea
 import com.github.bboygf.over_code.ui.component.MessageBubble
 import com.github.bboygf.over_code.ui.component.WelcomeScreen
+import com.github.bboygf.over_code.ui.memory.MemoryPanel
 import com.github.bboygf.over_code.ui.model_config.ModelConfigurable
 import com.github.bboygf.over_code.vo.SessionInfo
 import com.intellij.openapi.options.ShowSettingsUtil
@@ -210,6 +212,7 @@ fun OverCodeChatUI(project: Project? = null) {
                         } else {
                             viewModel.loadSessions()
                             viewModel.showHistory = true
+                            viewModel.showMemoryPanel = false // 关闭记忆库
                         }
                     }) {
                         Icon(
@@ -220,6 +223,8 @@ fun OverCodeChatUI(project: Project? = null) {
                     }
                     IconButton(onClick = {
                         viewModel.createNewSession()
+                        viewModel.showHistory = false // 关闭历史
+                        viewModel.showMemoryPanel = false // 关闭记忆库
                     }) {
                         Icon(
                             imageVector = Icons.Default.Add,
@@ -227,8 +232,26 @@ fun OverCodeChatUI(project: Project? = null) {
                             tint = textSecondaryColor
                         )
                     }
+                    // 记忆库按钮
+                    IconButton(onClick = {
+                        if (viewModel.showMemoryPanel) {
+                            viewModel.showMemoryPanel = false
+                        } else {
+                            viewModel.loadMemories() // 加载记忆数据
+                            viewModel.showMemoryPanel = true
+                            viewModel.showHistory = false // 关闭历史
+                        }
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = "记忆库",
+                            tint = if (viewModel.showMemoryPanel) primaryColor else textSecondaryColor
+                        )
+                    }
                     IconButton(onClick = {
                         viewModel.clearCurrentSession()
+                        viewModel.showHistory = false // 关闭历史
+                        viewModel.showMemoryPanel = false // 关闭记忆库
                     }) {
                         Icon(
                             imageVector = Icons.Default.Delete,
@@ -244,6 +267,8 @@ fun OverCodeChatUI(project: Project? = null) {
                                 "com.github.bboygf.over_code.ui.model_config.ModelConfigurable"
                             )
                         }
+                        viewModel.showHistory = false // 关闭历史
+                        viewModel.showMemoryPanel = false // 关闭记忆库
                     }) {
                         Icon(
                             imageVector = Icons.Default.Settings,
@@ -264,20 +289,47 @@ fun OverCodeChatUI(project: Project? = null) {
                     .weight(1f)
                     .fillMaxWidth()
             ) {
-                if (viewModel.showHistory) {
-                    HistoryScreen(
-                        viewModel = viewModel,
-                        backgroundColor = backgroundColor,
-                        surfaceColor = surfaceColor,
-                        textPrimaryColor = textPrimaryColor,
-                        textSecondaryColor = textSecondaryColor,
-                        primaryColor = primaryColor
-                    )
-                } else {
-                    if (viewModel.chatMessageVos.isEmpty()) {
+                // 判断显示哪个面板：历史 > 记忆 > 聊天
+                when {
+                    viewModel.showHistory -> {
+                        HistoryScreen(
+                            viewModel = viewModel,
+                            backgroundColor = backgroundColor,
+                            surfaceColor = surfaceColor,
+                            textPrimaryColor = textPrimaryColor,
+                            textSecondaryColor = textSecondaryColor,
+                            primaryColor = primaryColor
+                        )
+                    }
+
+                    viewModel.showMemoryPanel -> {
+                        MemoryPanel(
+                            memories = viewModel.memories,
+                            onAddMemory = { viewModel.addMemory(it) },
+                            onUpdateMemory = { id, memory ->
+                                viewModel.updateMemory(
+                                    id,
+                                    memory.summary,
+                                    memory.content
+                                )
+                            },
+                            onDeleteMemory = { viewModel.deleteMemory(it) },
+                            onGenerateMemory = { viewModel.generateMemoryFromSession() },
+                            isGenerating = viewModel.isGeneratingMemory,
+                            backgroundColor = backgroundColor,
+                            surfaceColor = surfaceColor,
+                            textPrimaryColor = textPrimaryColor,
+                            textSecondaryColor = textSecondaryColor,
+                            primaryColor = primaryColor
+                        )
+                    }
+
+                    viewModel.chatMessageVos.isEmpty() -> {
                         // 空状态 - 显示欢迎界面
                         WelcomeScreen()
-                    } else {
+                    }
+
+                    else -> {
                         // 消息列表
                         LazyColumn(
                             state = listState,
