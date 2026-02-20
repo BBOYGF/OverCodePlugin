@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.github.bboygf.over_code.LAST_SESSION
+import com.github.bboygf.over_code.DEFAULT_SYSTEM_PROMPT
 import com.github.bboygf.over_code.enums.ChatPattern
 import com.github.bboygf.over_code.enums.ChatRole
 import com.github.bboygf.over_code.llm.LLMService
@@ -32,6 +33,7 @@ import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.util.concurrent.CopyOnWriteArrayList
 import com.github.bboygf.over_code.utils.ImageUtils
+import com.github.bboygf.over_code.utils.Log
 import com.github.bboygf.over_code.utils.ProjectFileUtils
 import com.github.bboygf.over_code.utils.ToolRegistry
 import kotlinx.coroutines.withContext
@@ -533,23 +535,24 @@ class HomeViewModel(
             dbService.updateSessionTitle(currentSessionId, userInput.substring(0, userInput.length.coerceAtMost(100)))
         }
 
-        // 2. 构建 LLM 历史 (注意：此时 UI 上的 messages 已经包含了 userMessage)
-        // 2.1 先加载记忆作为上下文
-        val memoryContext = getMemoryContext()
-        val systemMessage = if (memoryContext.isNotBlank()) {
-            LLMMessage(
-                role = "system",
-                content = "【项目记忆库】以下是这个项目的特殊记忆，在后续开发中请参考这些信息：\n\n$memoryContext\n\n请在发现项目特有的配置、架构约定、特殊依赖或代码规范时，主动调用 save_memory 工具保存到记忆库中。"
-            )
-        } else null
-
-        // 2.2 构建消息列表
+        // 2. 构建 LLM 消息列表
         val llmMessages = mutableListOf<LLMMessage>()
 
-        // 添加系统消息（包含记忆上下文）
-        systemMessage?.let { llmMessages.add(it) }
+        // 2.1 添加系统提示词
+        llmMessages.add(LLMMessage(role = "system", content = DEFAULT_SYSTEM_PROMPT))
 
-        // 添加历史消息
+        // 2.2 添加记忆上下文
+        val memoryContext = getMemoryContext()
+        if (memoryContext.isNotBlank()) {
+            llmMessages.add(
+                LLMMessage(
+                    role = "system",
+                    content = "【项目记忆库】以下是这个项目的特殊记忆，在后续开发中请参考这些信息：\n\n$memoryContext\n\n请在发现项目特有的配置、架构约定、特殊依赖或代码规范时，主动调用 save_memory 工具保存到记忆库中。"
+                )
+            )
+        }
+
+        // 2.3 添加历史消息
         llmMessages.addAll(chatMessageVos.mapIndexed { index, msg ->
             LLMMessage(
                 role = msg.chatRole.role,
@@ -587,6 +590,7 @@ class HomeViewModel(
                     return@launch
                 }
                 e.printStackTrace()
+                Log.error("LLM 调用产生异常",e)
                 // 显示错误弹窗
                 errorMessage = e.message ?: "未知错误"
                 showErrorDialog = true

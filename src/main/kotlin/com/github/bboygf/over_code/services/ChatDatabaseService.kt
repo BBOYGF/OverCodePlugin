@@ -636,7 +636,7 @@ class ChatDatabaseService(private val project: Project) {
                     MemoryVo(
                         memoryId = row[Memory.memoryId],
                         summary = row[Memory.summary],
-                        content = "", // 不返回详情内容，减少数据传输
+                        content = row[Memory.content], // 不返回详情内容，减少数据传输
                         createdAt = row[Memory.createdAt],
                         updatedAt = row[Memory.updatedAt]
                     )

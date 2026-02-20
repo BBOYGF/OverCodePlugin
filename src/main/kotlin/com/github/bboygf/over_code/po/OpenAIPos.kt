@@ -10,6 +10,7 @@ data class OpenAIRequest(
     val model: String,
     val messages: List<OpenAIMessage>,
     val stream: Boolean,
+    val system: String? = null,    // 系统提示词
     val tools: List<OpenAITool>? = null, // 新增：可选的工具列表
     val tool_choice: String? = null      // 新增："auto", "required" 或 "none"
 )

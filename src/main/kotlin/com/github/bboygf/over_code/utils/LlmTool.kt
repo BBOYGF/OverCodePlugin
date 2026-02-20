@@ -45,7 +45,7 @@ object GetProjectInfoTool : LlmTool {
 
 object ListDirectoryContentsTool : LlmTool {
     override val name = "list_directory_contents"
-    override val description = "根据目录的绝对路径获取当前目录下的所有目录 and 文件，使用md格式输出字符串。"
+    override val description = "根据目录的绝对路径获取当前目录下的所有目录和文件。"
     override val parameters = buildJsonObject {
         put("type", "object")
         put("properties", buildJsonObject {
@@ -105,7 +105,7 @@ object GetFileFunInfoTool : LlmTool {
 
 object GetMethodDetailTool : LlmTool {
     override val name = "get_method_detail"
-    override val description = "根据文件的绝对路径和方法名获取特定方法的详情及起始终止行号"
+    override val description = "根据文件的绝对路径和方法名获取该方法的内容及起始终止行号"
     override val parameters = buildJsonObject {
         put("type", "object")
         put("properties", buildJsonObject {
