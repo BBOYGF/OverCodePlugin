@@ -27,7 +27,7 @@ interface LlmTool {
 
 object GetProjectInfoTool : LlmTool {
     override val name = "get_project_info"
-    override val description = "读取当前项目的完整文件结构和内容。"
+    override val description = "读取当前项目下所有的文件完整路径，一般情况下先不用使用该功能，因为该功能会返回大量的文件路径，可能会影响性能。"
     override val parameters = buildJsonObject {
         put("type", "object")
         put("properties", buildJsonObject {})
@@ -419,7 +419,7 @@ object OrganizeThoughtsTool : LlmTool {
 object GetMemoryTool : LlmTool {
     override val name = "get_memory"
     override val description =
-        "获取项目的记忆库内容，包括所有记忆概要和详情。这些记忆是项目特有的配置、架构约定和重要信息，对后续开发很重要。"
+        "获取项目的记忆库内容，包括所有记忆概要和详情。这些记忆是项目特有的配置、架构约定和重要信息，对后续开发很重要"
     override val parameters = buildJsonObject {
         put("type", "object")
         put("properties", buildJsonObject { })
@@ -458,7 +458,7 @@ object GetMemoryTool : LlmTool {
 object SaveMemoryTool : LlmTool {
     override val name = "save_memory"
     override val description =
-        "将重要信息保存到项目记忆库。当发现项目特有的配置、架构约定、特殊的依赖库或工具版本、自定义代码风格等对后续开发有用的信息时，应该调用此工具保存。AI 在对话过程中发现重要信息时应主动保存，而不是等用户要求。"
+        "保存或更新记忆库。当发现项目特有的配置、架构约定、特殊的依赖库或工具版本、自定义代码风格等对后续开发有用的信息时，应该调用此工具保存。AI 在对话过程中发现重要信息时应主动保存，而不是等用户要求。"
     override val parameters = buildJsonObject {
         put("type", "object")
         put("properties", buildJsonObject {
@@ -506,61 +506,6 @@ object SaveMemoryTool : LlmTool {
     }
 }
 
-/**
- * 会话总结工具 - 在会话结束时调用，快速保存会话中发现的重要信息
- * 与 SaveMemoryTool 功能类似，但参数更简化，专为会话总结场景设计
- */
-object SessionSummaryTool : LlmTool {
-    override val name = "session_summary"
-    override val description =
-        """会话结束时调用此工具，将本次会话中发现的重要信息保存到记忆库。
-        适用于快速记录：发现的问题、重要的代码修改、架构信息等。
-        如果需要更详细的信息记录，请使用 save_memory 工具。"""
-
-    override val parameters = buildJsonObject {
-        put("type", "object")
-        put("properties", buildJsonObject {
-            putJsonObject("title") {
-                put("type", "string")
-                put("description", "信息标题，简短概括这个信息的核心")
-            }
-            putJsonObject("details") {
-                put("type", "string")
-                put("description", "详细信息，详细描述这个信息的内容")
-            }
-        })
-    }
-    override val isWriteTool = false
-
-    override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
-        val title = args["title"]?.jsonPrimitive?.content ?: ""
-        val details = args["details"]?.jsonPrimitive?.content ?: ""
-
-        if (title.isBlank() || details.isBlank()) {
-            return "保存失败：title 和 details 不能为空"
-        }
-
-        return try {
-            val dbService = ChatDatabaseService.getInstance(project)
-
-            // 查找是否已存在相同标题的记忆
-            val existingMemory = dbService.getMemoryDetailBySummary(title)
-
-            if (existingMemory != null) {
-                // 更新已存在的记忆
-                dbService.updateMemory(existingMemory.memoryId, title, details)
-                "会话信息已更新：\n- 标题：$title\n\n在后续开发中，AI 会自动读取这些信息来了解项目的情况。"
-            } else {
-                // 添加新记忆
-                dbService.addMemory(MemoryVo(summary = title, content = details))
-                "会话信息已保存：\n- 标题：$title\n\n在后续开发中，AI 会自动读取这些信息来了解项目的情况。"
-            }
-        } catch (e: Exception) {
-            "保存会话信息失败: ${e.message}"
-        }
-    }
-}
-
 object ToolRegistry {
     val allTools = listOf(
         GetProjectInfoTool,
@@ -578,7 +523,6 @@ object ToolRegistry {
         OrganizeThoughtsTool,
         EditFileBySearchTool,
         GetMemoryTool,
-        SaveMemoryTool,
-        SessionSummaryTool
+        SaveMemoryTool
     )
 }
