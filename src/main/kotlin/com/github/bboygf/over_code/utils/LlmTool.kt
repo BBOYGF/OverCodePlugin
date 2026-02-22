@@ -26,8 +26,8 @@ interface LlmTool {
 
 
 object GetProjectInfoTool : LlmTool {
-    override val name = "get_project_info"
-    override val description = "读取当前项目下所有的文件完整路径，一般情况下先不用使用该功能，因为该功能会返回大量的文件路径，可能会影响性能。"
+    override val name = "get_project_files"
+    override val description = "列出当前项目下所有的文件的完整路径。"
     override val parameters = buildJsonObject {
         put("type", "object")
         put("properties", buildJsonObject {})
@@ -363,63 +363,14 @@ object EditFileBySearchTool : LlmTool {
 
 }
 
-/**
- * 思考整理工具 - AI 在首次执行时调用，了解当前所处模式和流程
- * 同时在会话结束时提醒 AI 保存重要信息到记忆库
- */
-object OrganizeThoughtsTool : LlmTool {
-    override val name = "organize_thoughts"
-    override val description =
-        """当用户有新的代码修改需求时或者用户需要按计划修改代码时调用。
-        此工具会让 AI 知道当前所处的模式（计划模式/执行模式）和工作流程。
-        重要提示：当本次对话即将结束或用户离开时，请主动使用 save_memory 工具将以下信息保存到记忆库：
-        1. 本次会话中发现的任何项目特有的配置、架构约定
-        2. 任何意外发现的问题或重要信息
-        3. 任何对后续开发有价值的信息
-        如果没有需要保存的信息，也可以在回复中说明"本次会话暂无需要记忆的信息"。"""
-
-    override val parameters = buildJsonObject {
-        put("type", "object")
-        put("properties", buildJsonObject { })
-    }
-    override val isWriteTool = false
-
-    override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
-
-        return if (chatMode == ChatPattern.计划模式) {
-            """
-            【当前为计划模式】
-            1. 禁止在此模式下修改代码。
-            2. 请利用现有工具（如获取项目结构、读取代码、查找方法等）深入理解业务逻辑。
-            3. 你需要向用户列出详细的修改计划。
-            4. 如果有任何不确定的地方或逻辑困惑，请在此向用户明确提问。
-            5. 当所有疑点确认后，请汇总最终执行计划，并提示用户：
-               "如果计划符合需求，请切换为执行模式，输入：按计划实施"
-      
-            【会话结束提示】
-            当本次对话即将结束时，请主动使用 save_memory 工具保存本次会话中发现的重要信息。
-            """.trimIndent()
-        } else {
-            """
-            【当前为执行模式】
-            1. 请结合之前的计划和上下文，使用修改类工具（如 edit_file_by_search, create_file_or_dir 等）对代码进行实际修改。
-            2. 每次修改完成后，必须使用 inspect_project_errors 工具检查代码是否报错。
-            3. 如果出现报错，请继续分析并修复，直到所有相关逻辑修改完毕且无编译错误。
-           
-            【会话结束提示】
-            当本次对话即将结束时，请主动使用 save_memory 工具保存本次会话中发现的重要信息。
-            """.trimIndent()
-        }
-    }
-}
 
 /**
- * 获取记忆库工具 - 让 AI 可以主动读取项目记忆
+ * 获取记忆列表工具 - 获取所有记忆的 ID 和概要
  */
-object GetMemoryTool : LlmTool {
-    override val name = "get_memory"
+object GetMemoriesListTool : LlmTool {
+    override val name = "get_memories_list"
     override val description =
-        "获取项目的记忆库内容，包括所有记忆概要和详情。这些记忆是项目特有的配置、架构约定和重要信息，对后续开发很重要"
+        "获取所有项目记忆的列表（包含 ID 和概要）。当你想了解项目有哪些记忆、记忆的 ID 是什么时使用此工具。"
     override val parameters = buildJsonObject {
         put("type", "object")
         put("properties", buildJsonObject { })
@@ -436,18 +387,159 @@ object GetMemoryTool : LlmTool {
             }
 
             buildString {
-                appendLine("【项目记忆库】")
+                appendLine("【项目记忆列表】")
                 appendLine()
+                appendLine("| ID | 概要 |")
+                appendLine("| --- | --- |")
                 memories.forEach { mem ->
-                    val detail = dbService.getMemoryById(mem.memoryId)
-                    appendLine("## ${mem.summary}")
-                    appendLine()
-                    appendLine("${detail?.content ?: ""}")
-                    appendLine()
+                    appendLine("| ${mem.memoryId} | ${mem.summary} |")
                 }
+                appendLine()
+                appendLine("如需查看某条记忆的详细内容，请使用 get_memory_detail 工具并提供对应的 memoryId。")
             }
         } catch (e: Exception) {
             "读取记忆库失败: ${e.message}"
+        }
+    }
+}
+
+/**
+ * 获取记忆详情工具 - 根据 ID 获取记忆的完整内容
+ */
+object GetMemoryDetailTool : LlmTool {
+    override val name = "get_memory_detail"
+    override val description = "根据记忆 ID（memoryId）获取记忆的详细内容，包括概要和详情"
+    override val parameters = buildJsonObject {
+        put("type", "object")
+        put("properties", buildJsonObject {
+            putJsonObject("memoryId") {
+                put("type", "string")
+                put("description", "记忆的唯一标识 ID")
+            }
+        })
+    }
+    override val isWriteTool = false
+
+    override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
+        return try {
+            val memoryId = args["memoryId"]?.jsonPrimitive?.content ?: ""
+            if (memoryId.isBlank()) {
+                return "获取失败：memoryId 不能为空"
+            }
+
+            val dbService = ChatDatabaseService.getInstance(project)
+            val memory = dbService.getMemoryById(memoryId)
+
+            if (memory == null) {
+                return "未找到 ID 为 [$memoryId] 的记忆"
+            }
+
+            buildString {
+                appendLine("【记忆详情】")
+                appendLine()
+                appendLine("**ID**: ${memory.memoryId}")
+                appendLine()
+                appendLine("**概要**: ${memory.summary}")
+                appendLine()
+                appendLine("**详情**:")
+                appendLine()
+                appendLine(memory.content)
+            }
+        } catch (e: Exception) {
+            "获取记忆详情失败: ${e.message}"
+        }
+    }
+}
+
+/**
+ * 修改记忆工具 - 根据 ID 修改记忆的概要和详情
+ */
+object UpdateMemoryTool : LlmTool {
+    override val name = "update_memory"
+    override val description = "根据记忆 ID（memoryId）修改记忆的概要和详情"
+    override val parameters = buildJsonObject {
+        put("type", "object")
+        put("properties", buildJsonObject {
+            putJsonObject("memoryId") {
+                put("type", "string")
+                put("description", "记忆的唯一标识 ID")
+            }
+            putJsonObject("summary") {
+                put("type", "string")
+                put("description", "新的经验概要")
+            }
+            putJsonObject("content") {
+                put("type", "string")
+                put("description", "新的经验详情")
+            }
+        })
+    }
+    override val isWriteTool = true
+
+    override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
+        return try {
+            val memoryId = args["memoryId"]?.jsonPrimitive?.content ?: ""
+            val summary = args["summary"]?.jsonPrimitive?.content ?: ""
+            val content = args["content"]?.jsonPrimitive?.content ?: ""
+
+            if (memoryId.isBlank() || summary.isBlank() || content.isBlank()) {
+                return "修改失败：memoryId、summary 和 content 都不能为空"
+            }
+
+            val dbService = ChatDatabaseService.getInstance(project)
+            val existing = dbService.getMemoryById(memoryId)
+
+            if (existing == null) {
+                return "修改失败：未找到 ID 为 [$memoryId] 的记忆"
+            }
+
+            val success = dbService.updateMemory(memoryId, summary, content)
+            if (success) {
+                "记忆修改成功！\n- ID: $memoryId\n- 概要: $summary\n\n可以使用 get_memory_detail 工具查看修改后的内容。"
+            } else {
+                "记忆修改失败"
+            }
+        } catch (e: Exception) {
+            "修改记忆失败: ${e.message}"
+        }
+    }
+}
+
+/**
+ * 删除记忆工具 - 根据 ID 删除记忆
+ */
+object DeleteMemoryTool : LlmTool {
+    override val name = "delete_memory"
+    override val description = "根据记忆 ID（memoryId）删除指定的记忆"
+    override val parameters = buildJsonObject {
+        put("type", "object")
+        put("properties", buildJsonObject {
+            putJsonObject("memoryId") {
+                put("type", "string")
+                put("description", "记忆的唯一标识 ID")
+            }
+        })
+    }
+    override val isWriteTool = true
+
+    override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
+        return try {
+            val memoryId = args["memoryId"]?.jsonPrimitive?.content ?: ""
+            if (memoryId.isBlank()) {
+                return "删除失败：memoryId 不能为空"
+            }
+
+            val dbService = ChatDatabaseService.getInstance(project)
+            val existing = dbService.getMemoryById(memoryId)
+
+            if (existing == null) {
+                return "删除失败：未找到 ID 为 [$memoryId] 的记忆"
+            }
+
+            dbService.deleteMemory(memoryId)
+            "记忆删除成功！\n已删除记忆 ID: $memoryId (${existing.summary})"
+        } catch (e: Exception) {
+            "删除记忆失败: ${e.message}"
         }
     }
 }
@@ -518,11 +610,12 @@ object ToolRegistry {
         FindClassByNameTool,
         InspectProjectErrorsTool,
         CreateFileOrDirTool,
-//        ReplaceCodeByLineTool,
         DeleteFileTool,
-        OrganizeThoughtsTool,
         EditFileBySearchTool,
-        GetMemoryTool,
+        GetMemoriesListTool,
+        GetMemoryDetailTool,
+        UpdateMemoryTool,
+        DeleteMemoryTool,
         SaveMemoryTool
     )
 }
