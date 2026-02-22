@@ -46,12 +46,17 @@ class OllamaProvider(
     }
 
     override suspend fun chat(messages: List<LLMMessage>): String {
-        return withContext(Dispatchers.IO) {
-            try {
+        return try {
+            withContext(Dispatchers.IO) {
+                // 提取 system 消息
+                val systemMessage = messages.find { it.role == "system" }?.content
+                val filteredMessages = messages.filter { it.role != "system" }
+
                 val requestBody = OpenAIRequest(
                     model = model,
-                    messages = messages.map { it.toOpenAIMessage() },
-                    stream = false
+                    messages = filteredMessages.map { it.toOpenAIMessage() },
+                    stream = false,
+                    system = systemMessage
                 ).also {
                     Log.info("Ollama Request: ${Json.encodeToString(it)}")
                 }
@@ -60,11 +65,11 @@ class OllamaProvider(
                     setBody(requestBody)
                 }.body()
                 Log.info("Ollama Response: ${Json.encodeToString(response)}")
-                return@withContext response.choices.first().message?.getContentString() ?: ""
-            } catch (e: Exception) {
-                Log.error("OllamaProvider chat方法调用失败", e)
-                throw LLMException(parseOllamaError(e), e)
+                response.choices.first().message?.getContentString() ?: ""
             }
+        } catch (e: Exception) {
+            Log.error("OllamaProvider chat方法调用失败", e)
+            throw LLMException(parseOllamaError(e), e)
         }
     }
 
@@ -77,10 +82,15 @@ class OllamaProvider(
     ) {
         withContext(Dispatchers.IO) {
             try {
+                // 提取 system 消息
+                val systemMessage = messages.find { it.role == "system" }?.content
+                val filteredMessages = messages.filter { it.role != "system" }
+
                 val requestBody = OpenAIRequest(
                     model = model,
-                    messages = messages.map { it.toOpenAIMessage() },
+                    messages = filteredMessages.map { it.toOpenAIMessage() },
                     stream = true,
+                    system = systemMessage,
                     tools = tools?.map {
                         OpenAITool(
                             function = OpenAIFunction(

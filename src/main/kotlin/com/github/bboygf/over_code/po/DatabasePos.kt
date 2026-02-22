@@ -81,3 +81,15 @@ object OtherConfigs : IntIdTable("other_configs") {
     val key = varchar("key", 50).uniqueIndex()
     val value = varchar("value", 500)
 }
+
+/**
+ * 记忆库数据库表定义 (单一表)
+ */
+object Memory : IntIdTable("memory") {
+    val memoryId = varchar("memory_id", 50).uniqueIndex()
+    val summary = varchar("summary", 500) // 经验概要
+    val content = text("content") // 经验详情
+    val createdAt = long("created_at")
+    val updatedAt = long("updated_at")
+}
+

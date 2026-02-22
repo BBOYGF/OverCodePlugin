@@ -21,6 +21,9 @@
   - 优化 Claude 请求数据兼容。
   - 优化聊天是鼠标滚动后被模型回复劫持问题。
   - 优化历史回话标题，使用首次请求前100字。
+- V1.0.6
+  - 修复新建文件后再次编辑失败问题
+  - 增加记忆库功能
 
 [Unreleased]: https://github.com/BBOYGF/OverCodePlugin/compare/v1.0.5...HEAD
 [1.0.5]: https://github.com/BBOYGF/OverCodePlugin/commits/v1.0.5

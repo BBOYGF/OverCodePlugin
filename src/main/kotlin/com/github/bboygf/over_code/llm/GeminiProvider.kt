@@ -150,7 +150,7 @@ class GeminiProvider(
                                         if (thoughtValue is JsonPrimitive) {
                                             if (thoughtValue.isString) {
                                                 thoughtChunks.add(thoughtValue.content)
-                                                isThoughtPart = true
+                                                isThoughtPart =  true
                                             } else if (thoughtValue.content == "true") {
                                                 isThoughtPart = true
                                                 part.text?.let { thoughtChunks.add(it) }

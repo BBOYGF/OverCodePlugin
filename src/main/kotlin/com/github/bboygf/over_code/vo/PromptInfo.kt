@@ -13,3 +13,14 @@ data class PromptInfo(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
+
+/**
+ * 记忆库VO (单一表)
+ */
+data class MemoryVo(
+    val memoryId: String = "",
+    val summary: String, // 经验概要
+    val content: String, // 经验详情
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)

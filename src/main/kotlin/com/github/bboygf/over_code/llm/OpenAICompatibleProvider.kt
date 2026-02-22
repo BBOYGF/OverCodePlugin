@@ -73,10 +73,15 @@ class OpenAICompatibleProvider(
 
     override suspend fun chat(messages: List<LLMMessage>): String {
         return withContext(Dispatchers.IO) {
+            // 提取 system 消息
+            val systemMessage = messages.find { it.role == "system" }?.content
+            val filteredMessages = messages.filter { it.role != "system" }
+
             val requestBody = OpenAIRequest(
                 model = model,
-                messages = messages.map { it.toOpenAIMessage() },
-                stream = false
+                messages = filteredMessages.map { it.toOpenAIMessage() },
+                stream = false,
+                system = systemMessage
             ).also {
                 Log.info("OpenAI Request: ${Json.encodeToString(it)}")
             }
@@ -104,14 +109,19 @@ class OpenAICompatibleProvider(
         onThought: ((String) -> Unit)?
     ) {
         withContext(Dispatchers.IO) {
+            // 提取 system 消息
+            val systemMessage = messages.find { it.role == "system" }?.content
+            val filteredMessages = messages.filter { it.role != "system" }
+
             val requestBody = OpenAIRequest(
                 model = model,
-                messages = messages.map { it.toOpenAIMessage() },
+                messages = filteredMessages.map { it.toOpenAIMessage() },
                 stream = true,
+                system = systemMessage,
                 tools = tools?.map { OpenAITool(function = OpenAIFunction(it.name, it.description, it.parameters)) },
                 tool_choice = if (tools != null) "auto" else null
             ).also {
-//                Log.info("OpenAI Request: ${Json.encodeToString(it)}")
+                Log.info("OpenAI Request: ${Json.encodeToString(it)}")
             }
             val toolCallsMap = mutableMapOf<Int, ToolCallAccumulator>()
             var line = ""

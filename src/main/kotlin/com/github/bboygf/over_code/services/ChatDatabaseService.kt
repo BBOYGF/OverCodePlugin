@@ -2,10 +2,12 @@ package com.github.bboygf.over_code.services
 
 import com.github.bboygf.over_code.po.ChatMessages
 import com.github.bboygf.over_code.po.ChatSessions
+import com.github.bboygf.over_code.po.Memory
 import com.github.bboygf.over_code.po.ModelConfigs
 import com.github.bboygf.over_code.po.OtherConfigs
 import com.github.bboygf.over_code.po.PromptTemplates
 import com.github.bboygf.over_code.vo.ChatMessageVo
+import com.github.bboygf.over_code.vo.MemoryVo
 import com.github.bboygf.over_code.vo.ModelConfigInfo
 import com.github.bboygf.over_code.vo.PromptInfo
 import com.github.bboygf.over_code.vo.SessionInfo
@@ -48,7 +50,7 @@ class ChatDatabaseService(private val project: Project) {
         transaction(database) {
             SchemaUtils.createMissingTablesAndColumns(
                 ChatMessages, ChatSessions, ModelConfigs, PromptTemplates,
-                OtherConfigs
+                OtherConfigs, Memory
             )
             initializeDefaultPrompts()
         }
@@ -619,6 +621,119 @@ class ChatDatabaseService(private val project: Project) {
         }
         return result
     }
+
+    // ==================== 记忆管理 ====================
+
+    /**
+     * 获取所有记忆概要
+     * 返回所有记忆的 ID 和 summary，用于列表展示
+     */
+    fun getAllMemorySummaries(): List<MemoryVo> {
+        return transaction(database) {
+            Memory.selectAll()
+                .orderBy(Memory.updatedAt to SortOrder.DESC)
+                .map { row ->
+                    MemoryVo(
+                        memoryId = row[Memory.memoryId],
+                        summary = row[Memory.summary],
+                        content = row[Memory.content], // 不返回详情内容，减少数据传输
+                        createdAt = row[Memory.createdAt],
+                        updatedAt = row[Memory.updatedAt]
+                    )
+                }
+        }
+    }
+
+    /**
+     * 根据记忆概要获取记忆详情
+     * @param summary 经验概要，用于查找对应的记忆详情
+     * @return 匹配的记忆详情，如果找不到返回 null
+     */
+    fun getMemoryDetailBySummary(summary: String): MemoryVo? {
+        return transaction(database) {
+            Memory.selectAll()
+                .where { Memory.summary eq summary }
+                .firstOrNull()
+                ?.let { row ->
+                    MemoryVo(
+                        memoryId = row[Memory.memoryId],
+                        summary = row[Memory.summary],
+                        content = row[Memory.content],
+                        createdAt = row[Memory.createdAt],
+                        updatedAt = row[Memory.updatedAt]
+                    )
+                }
+        }
+    }
+
+    /**
+     * 根据记忆ID获取记忆详情
+     * @param memoryId 记忆唯一标识
+     * @return 记忆详情，如果找不到返回 null
+     */
+    fun getMemoryById(memoryId: String): MemoryVo? {
+        return transaction(database) {
+            Memory.selectAll()
+                .where { Memory.memoryId eq memoryId }
+                .firstOrNull()
+                ?.let { row ->
+                    MemoryVo(
+                        memoryId = row[Memory.memoryId],
+                        summary = row[Memory.summary],
+                        content = row[Memory.content],
+                        createdAt = row[Memory.createdAt],
+                        updatedAt = row[Memory.updatedAt]
+                    )
+                }
+        }
+    }
+
+    /**
+     * 修改记忆概要和详情
+     * @param memoryId 记忆唯一标识
+     * @param summary 新的经验概要
+     * @param content 新的经验详情
+     * @return 是否修改成功
+     */
+    fun updateMemory(memoryId: String, summary: String, content: String): Boolean {
+        return transaction(database) {
+            val updated = Memory.update({ Memory.memoryId eq memoryId }) {
+                it[Memory.summary] = summary
+                it[Memory.content] = content
+                it[updatedAt] = System.currentTimeMillis()
+            }
+            updated > 0
+        }
+    }
+
+    /**
+     * 添加新记忆
+     */
+    fun addMemory(memory: MemoryVo): String {
+        val newMemoryId = generateMemoryId()
+        transaction(database) {
+            val now = System.currentTimeMillis()
+            Memory.insert {
+                it[Memory.memoryId] = newMemoryId
+                it[Memory.summary] = memory.summary
+                it[Memory.content] = memory.content
+                it[createdAt] = now
+                it[updatedAt] = now
+            }
+        }
+        return newMemoryId
+    }
+
+    /**
+     * 删除记忆
+     */
+    fun deleteMemory(memoryId: String) {
+        transaction(database) {
+            Memory.deleteWhere { Memory.memoryId eq memoryId }
+        }
+    }
+
+    private fun generateMemoryId(): String = "memory_${System.currentTimeMillis()}_${(1000..9999).random()}"
 
     /**
      * 生成唯一 Prompt ID

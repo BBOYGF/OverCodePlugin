@@ -4,6 +4,8 @@ import com.github.bboygf.over_code.po.LlmToolDefinition
 import com.intellij.openapi.project.Project
 import kotlinx.serialization.json.*
 import com.github.bboygf.over_code.enums.ChatPattern
+import com.github.bboygf.over_code.services.ChatDatabaseService
+import com.github.bboygf.over_code.vo.MemoryVo
 import kotlinx.serialization.json.buildJsonObject
 
 /**
@@ -25,7 +27,7 @@ interface LlmTool {
 
 object GetProjectInfoTool : LlmTool {
     override val name = "get_project_info"
-    override val description = "读取当前项目的完整文件结构和内容。"
+    override val description = "读取当前项目下所有的文件完整路径，一般情况下先不用使用该功能，因为该功能会返回大量的文件路径，可能会影响性能。"
     override val parameters = buildJsonObject {
         put("type", "object")
         put("properties", buildJsonObject {})
@@ -43,7 +45,7 @@ object GetProjectInfoTool : LlmTool {
 
 object ListDirectoryContentsTool : LlmTool {
     override val name = "list_directory_contents"
-    override val description = "根据目录的绝对路径获取当前目录下的所有目录 and 文件，使用md格式输出字符串。"
+    override val description = "根据目录的绝对路径获取当前目录下的所有目录和文件。"
     override val parameters = buildJsonObject {
         put("type", "object")
         put("properties", buildJsonObject {
@@ -103,7 +105,7 @@ object GetFileFunInfoTool : LlmTool {
 
 object GetMethodDetailTool : LlmTool {
     override val name = "get_method_detail"
-    override val description = "根据文件的绝对路径和方法名获取特定方法的详情及起始终止行号"
+    override val description = "根据文件的绝对路径和方法名获取该方法的内容及起始终止行号"
     override val parameters = buildJsonObject {
         put("type", "object")
         put("properties", buildJsonObject {
@@ -361,10 +363,21 @@ object EditFileBySearchTool : LlmTool {
 
 }
 
+/**
+ * 思考整理工具 - AI 在首次执行时调用，了解当前所处模式和流程
+ * 同时在会话结束时提醒 AI 保存重要信息到记忆库
+ */
 object OrganizeThoughtsTool : LlmTool {
     override val name = "organize_thoughts"
     override val description =
-        "当用户有新的代码修改需求时或者用户需要按计划修改代码时调用"
+        """当用户有新的代码修改需求时或者用户需要按计划修改代码时调用。
+        此工具会让 AI 知道当前所处的模式（计划模式/执行模式）和工作流程。
+        重要提示：当本次对话即将结束或用户离开时，请主动使用 save_memory 工具将以下信息保存到记忆库：
+        1. 本次会话中发现的任何项目特有的配置、架构约定
+        2. 任何意外发现的问题或重要信息
+        3. 任何对后续开发有价值的信息
+        如果没有需要保存的信息，也可以在回复中说明"本次会话暂无需要记忆的信息"。"""
+
     override val parameters = buildJsonObject {
         put("type", "object")
         put("properties", buildJsonObject { })
@@ -382,16 +395,113 @@ object OrganizeThoughtsTool : LlmTool {
             4. 如果有任何不确定的地方或逻辑困惑，请在此向用户明确提问。
             5. 当所有疑点确认后，请汇总最终执行计划，并提示用户：
                "如果计划符合需求，请切换为执行模式，输入：按计划实施"
-     
+      
+            【会话结束提示】
+            当本次对话即将结束时，请主动使用 save_memory 工具保存本次会话中发现的重要信息。
             """.trimIndent()
         } else {
             """
             【当前为执行模式】
             1. 请结合之前的计划和上下文，使用修改类工具（如 edit_file_by_search, create_file_or_dir 等）对代码进行实际修改。
-            2. 每次修改完成后，必须使用 inspect_project_errors 或 review_code_by_file 工具检查代码是否报错。
+            2. 每次修改完成后，必须使用 inspect_project_errors 工具检查代码是否报错。
             3. 如果出现报错，请继续分析并修复，直到所有相关逻辑修改完毕且无编译错误。
-          
+           
+            【会话结束提示】
+            当本次对话即将结束时，请主动使用 save_memory 工具保存本次会话中发现的重要信息。
             """.trimIndent()
+        }
+    }
+}
+
+/**
+ * 获取记忆库工具 - 让 AI 可以主动读取项目记忆
+ */
+object GetMemoryTool : LlmTool {
+    override val name = "get_memory"
+    override val description =
+        "获取项目的记忆库内容，包括所有记忆概要和详情。这些记忆是项目特有的配置、架构约定和重要信息，对后续开发很重要"
+    override val parameters = buildJsonObject {
+        put("type", "object")
+        put("properties", buildJsonObject { })
+    }
+    override val isWriteTool = false
+
+    override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
+        return try {
+            val dbService = ChatDatabaseService.getInstance(project)
+            val memories = dbService.getAllMemorySummaries()
+
+            if (memories.isEmpty()) {
+                return "当前项目还没有记忆库内容。"
+            }
+
+            buildString {
+                appendLine("【项目记忆库】")
+                appendLine()
+                memories.forEach { mem ->
+                    val detail = dbService.getMemoryById(mem.memoryId)
+                    appendLine("## ${mem.summary}")
+                    appendLine()
+                    appendLine("${detail?.content ?: ""}")
+                    appendLine()
+                }
+            }
+        } catch (e: Exception) {
+            "读取记忆库失败: ${e.message}"
+        }
+    }
+}
+
+/**
+ * 保存记忆工具 - 让 AI 可以主动保存重要信息到记忆库
+ */
+object SaveMemoryTool : LlmTool {
+    override val name = "save_memory"
+    override val description =
+        "保存或更新记忆库。当发现项目特有的配置、架构约定、特殊的依赖库或工具版本、自定义代码风格等对后续开发有用的信息时，应该调用此工具保存。AI 在对话过程中发现重要信息时应主动保存，而不是等用户要求。"
+    override val parameters = buildJsonObject {
+        put("type", "object")
+        put("properties", buildJsonObject {
+            putJsonObject("summary") {
+                put("type", "string")
+                put(
+                    "description",
+                    "经验概要，简短描述这个记忆的核心内容，如：'项目使用XX框架的特定版本'、'代码规范要求使用XX风格' 等"
+                )
+            }
+            putJsonObject("content") {
+                put("type", "string")
+                put("description", "经验详情，详细描述这个记忆的具体内容，包括配置值、代码示例等")
+            }
+        })
+    }
+    override val isWriteTool = false // 设置为 false 让计划模式也能使用
+
+    override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
+        return try {
+            val summary = args["summary"]?.jsonPrimitive?.content ?: ""
+            val content = args["content"]?.jsonPrimitive?.content ?: ""
+
+            if (summary.isBlank() || content.isBlank()) {
+                return "保存失败：summary 和 content 不能为空"
+            }
+
+            val dbService = ChatDatabaseService.getInstance(project)
+
+            // 查找是否已存在相同 summary 的记忆
+            val existingMemory = dbService.getMemoryDetailBySummary(summary)
+
+            if (existingMemory != null) {
+                // 更新已存在的记忆
+                dbService.updateMemory(existingMemory.memoryId, summary, content)
+                "记忆已更新：\n- 概要：$summary\n\n在后续开发中，AI 会自动读取这些记忆来了解项目的特殊情况。"
+            } else {
+                // 添加新记忆
+                dbService.addMemory(MemoryVo(summary = summary, content = content))
+                "记忆已保存：\n- 概要：$summary\n\n在后续开发中，AI 会自动读取这些记忆来了解项目的特殊情况。"
+            }
+        } catch (e: Exception) {
+            "保存记忆失败: ${e.message}"
         }
     }
 }
@@ -411,6 +521,8 @@ object ToolRegistry {
 //        ReplaceCodeByLineTool,
         DeleteFileTool,
         OrganizeThoughtsTool,
-        EditFileBySearchTool
+        EditFileBySearchTool,
+        GetMemoryTool,
+        SaveMemoryTool
     )
 }

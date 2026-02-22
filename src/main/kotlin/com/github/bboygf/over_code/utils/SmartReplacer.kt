@@ -465,7 +465,7 @@ object SmartReplacer {
                 }
 
                 val lastIndex = content.lastIndexOf(search)
-                if (index != lastIndex) {
+                if (index != lastIndex && content.isNotEmpty()) {
                     throw IllegalArgumentException(
                         "找到多个匹配项。请提供更多上下文来定位正确的匹配。"
                     )
@@ -500,29 +500,21 @@ object SmartReplacer {
     fun editFileBySearch(
         project: Project,
         filePath: String,
-        oldString: String,
+        oldString: String="",
         newString: String,
         replaceAll: Boolean = false,
         virtualFileFinder: (String) -> VirtualFile?,
         commitAndFormat: (Project, com.intellij.openapi.editor.Document, Int, Int) -> Unit
     ): String {
         Log.info("调用智能文本替换工具: $filePath")
-
         if (oldString == newString) {
             return "### ❌ 失败: oldString 和 newString 必须不同"
         }
-
-        if (oldString.isEmpty()) {
-            return "### ❌ 失败: oldString 不能为空"
-        }
-
         val virtualFile = virtualFileFinder(filePath)
             ?: return "### ❌ 失败: 未找到文件\n路径: `$filePath`"
-
         if (virtualFile.isDirectory) {
             return "### ❌ 失败: 路径是目录而非文件\n路径: `$filePath`"
         }
-
         var newContent: String? = null
         var originalContentLength = 0
 
@@ -533,7 +525,6 @@ object SmartReplacer {
 
             val originalContent = document.text
             originalContentLength = originalContent.length
-
             try {
                 newContent = smartReplace(originalContent, oldString, newString, replaceAll)
                 null // 无错误
