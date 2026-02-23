@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
@@ -179,15 +181,15 @@ fun MemoryCard(
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onSelect),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = surfaceColor)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            // 头部
+            // 头部（点击展开/收起）
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onSelect),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -273,12 +275,14 @@ fun MemoryCard(
                         label = { Text("详情内容", color = textSecondaryColor) }
                     )
                 } else {
-                    Text(
-                        text = memory.content,
-                        color = textSecondaryColor,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(start = 24.dp)
-                    )
+                    SelectionContainer {
+                        Text(
+                            text = memory.content,
+                            color = textSecondaryColor,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(start = 24.dp),
+                        )
+                    }
                 }
             }
         }
