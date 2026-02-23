@@ -264,11 +264,13 @@ class ClaudeProvider(
                                             }
                                         }
                                         msg.toolCalls?.forEach { tc ->
+                                            // 验证 JSON 参数是否有效，避免因流式响应不完整导致解析失败
+                                            val validArguments = tryParseJsonOrDefault(tc.arguments)
                                             addJsonObject {
                                                 put("type", "tool_use")
                                                 put("id", tc.id)
                                                 put("name", tc.functionName)
-                                                put("input", Json.parseToJsonElement(tc.arguments))
+                                                put("input", Json.parseToJsonElement(validArguments))
                                             }
                                         }
                                     }
@@ -292,6 +294,38 @@ class ClaudeProvider(
             mime to data
         } else {
             "image/jpeg" to base64String
+        }
+    }
+
+    /**
+     * 尝试解析 JSON 字符串，如果失败则返回默认的空对象 JSON
+     * 用于处理流式响应中 partial_json 可能不完整的情况
+     *
+     * @param jsonString 要解析的 JSON 字符串
+     * @return 有效的 JSON 字符串，解析失败时返回 "{}"
+     */
+    private fun tryParseJsonOrDefault(jsonString: String): String {
+        return try {
+            Json.parseToJsonElement(jsonString)
+            jsonString
+        } catch (e: Exception) {
+            Log.warn(
+                "工具参数 JSON 解析失败，functionName=${extractFunctionName(jsonString)}, " +
+                        "rawArgs=${jsonString.take(100)}, 原因: ${e.message}, 使用默认空对象"
+            )
+            "{}"
+        }
+    }
+
+    /**
+     * 从 JSON 字符串中提取函数名（用于日志）
+     */
+    private fun extractFunctionName(jsonString: String): String {
+        return try {
+            Json.parseToJsonElement(jsonString)
+                .jsonObject["name"]?.jsonPrimitive?.content ?: "unknown"
+        } catch (e: Exception) {
+            "unknown"
         }
     }
 

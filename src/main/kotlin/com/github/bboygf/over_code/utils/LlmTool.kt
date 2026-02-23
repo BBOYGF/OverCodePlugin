@@ -25,23 +25,42 @@ interface LlmTool {
 }
 
 
-object GetProjectInfoTool : LlmTool {
-    override val name = "get_project_files"
-    override val description = "列出当前项目下所有的文件的完整路径。"
+//object GetProjectInfoTool : LlmTool {
+//    override val name = "get_project_files"
+//    override val description = "列出当前项目下所有的文件的完整路径。"
+//    override val parameters = buildJsonObject {
+//        put("type", "object")
+//        put("properties", buildJsonObject {})
+//    }
+//    override val isWriteTool = false
+//
+//    override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
+//        return try {
+//            ProjectFileUtils.exportToMarkdown(project)
+//        } catch (e: Exception) {
+//            "读取项目失败: ${e.message}"
+//        }
+//    }
+//}
+
+/**
+ * 获取目录树形结构工具 - 只列出目录，使用 MD 树形图格式
+ */
+object GetDirectoryTreeTool : LlmTool {
+    override val name = "get_directory_tree"
+    override val description = "获取当前项目的所有目录树形结构，只列出目录（不包含文件），使用 MD 树形图格式输出"
     override val parameters = buildJsonObject {
         put("type", "object")
-        put("properties", buildJsonObject {})
+        put("properties", buildJsonObject { })
     }
     override val isWriteTool = false
 
     override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
-        return try {
-            ProjectFileUtils.exportToMarkdown(project)
-        } catch (e: Exception) {
-            "读取项目失败: ${e.message}"
-        }
+        val basePath = project.basePath ?: return "### ❌ 失败：无法获取项目路径"
+        return ProjectFileUtils.getDirectoryTree(project, basePath)
     }
 }
+
 
 object ListDirectoryContentsTool : LlmTool {
     override val name = "list_directory_contents"
@@ -598,9 +617,10 @@ object SaveMemoryTool : LlmTool {
     }
 }
 
+
 object ToolRegistry {
     val allTools = listOf(
-        GetProjectInfoTool,
+//        GetProjectInfoTool,
         ListDirectoryContentsTool,
         ReadFileContentTool,
         ReadFileRangeTool,
@@ -616,6 +636,7 @@ object ToolRegistry {
         GetMemoryDetailTool,
         UpdateMemoryTool,
         DeleteMemoryTool,
-        SaveMemoryTool
+        SaveMemoryTool,
+        GetDirectoryTreeTool,
     )
 }

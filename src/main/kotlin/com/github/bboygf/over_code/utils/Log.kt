@@ -24,6 +24,15 @@ object Log {
     }
 
     /**
+     * 打印警告信息
+     */
+    fun warn(message: String?) {
+        ioScope.launch {
+            writeLog("WARN", message)
+        }
+    }
+
+    /**
      * 打印错误信息，支持传入异常类解析堆栈
      */
     fun error(message: String?, throwable: Throwable? = null) {

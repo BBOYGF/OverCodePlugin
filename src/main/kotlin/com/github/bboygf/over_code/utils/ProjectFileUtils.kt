@@ -93,22 +93,48 @@ object ProjectFileUtils {
     }
 
     /**
-     * 不包含的目录活文件
+     * 不包含的目录或文件
      */
     private fun shouldInclude(file: VirtualFile, project: Project): Boolean {
         if (file.isDirectory) return false
 
         val fileIndex = ProjectFileIndex.getInstance(project)
 
-        // 1. 检查文件是否在“排除列表”中（如 build, target 等目录下的文件）
+        // 1. 检查文件是否在"排除列表"中（如 build, target 等目录下的文件）
         if (fileIndex.isExcluded(file)) return false
 
         // 2. 检查是否属于库文件或编译后的 class 文件（排除 jar 包 and 依赖库源码）
         if (fileIndex.isInLibraryClasses(file) || fileIndex.isInLibrarySource(file)) return false
 
         // 3. 基础过滤：排除特定后缀
-        val ignoredExtensions = setOf("class", "jar", "exe", "dll", "pyc", "png", "jpg", "jpeg", "gif", "bmp","sql","log")
+        val ignoredExtensions =
+            setOf("class", "jar", "exe", "dll", "pyc", "png", "jpg", "jpeg", "gif", "bmp", "sql", "log")
         if (ignoredExtensions.contains(file.extension?.lowercase())) return false
+
+        return true
+    }
+
+    /**
+     * 判断目录是否应该包含在目录树中
+     */
+    private fun shouldIncludeDirectory(dir: VirtualFile, project: Project): Boolean {
+        val fileIndex = ProjectFileIndex.getInstance(project)
+
+        // 1. 检查目录是否在"排除列表"中（如 build, target, .gradle 等目录）
+        if (fileIndex.isExcluded(dir)) return false
+
+        // 2. 检查是否属于库目录
+        if (fileIndex.isInLibraryClasses(dir) || fileIndex.isInLibrarySource(dir)) return false
+
+        // 3. 排除隐藏目录（以 . 开头）
+        if (dir.name.startsWith(".")) return false
+
+        // 4. 排除常见的构建输出目录
+        val excludedDirs = setOf(
+            "build", "target", "out", "dist", "lib", "bin", "obj",
+            ".gradle", ".idea", "node_modules", "__pycache__", "venv"
+        )
+        if (excludedDirs.contains(dir.name)) return false
 
         return true
     }
@@ -765,5 +791,110 @@ object ProjectFileUtils {
             virtualFileFinder = ::findVirtualFile,
             commitAndFormat = ::commitAndFormat
         )
+    }
+
+    /**
+     * 获取指定目录的树形结构，只列出目录（不包含文件），使用 MD 树形图格式输出
+     * @param project 项目实例
+     * @param absolutePath 目录的绝对路径
+     * @return MD 树形图格式的目录结构
+     */
+    fun getDirectoryTree(project: Project, absolutePath: String): String {
+        val projectPath = project.basePath ?: ""
+        Log.info("调用工具，获取目录树形结构，项目路径: $projectPath, 目标路径: $absolutePath")
+        return runReadAction {
+            val virtualFile = findVirtualFile(absolutePath)
+
+            if (virtualFile == null || !virtualFile.exists()) {
+                return@runReadAction "### ❌ 失败：路径不存在\n路径: `$absolutePath`"
+            }
+
+            if (!virtualFile.isDirectory) {
+                return@runReadAction "### ❌ 失败：该路径不是一个目录\n路径: `$absolutePath`"
+            }
+
+            val sb = StringBuilder()
+            sb.append("# 目录树形结构\n\n")
+            sb.append("📁 项目根路径: $projectPath")
+
+            // 递归构建树形结构
+            fun buildTree(parentFile: VirtualFile, prefix: String, isLast: Boolean) {
+                val children = parentFile.children
+                    ?.filter { it.isDirectory && shouldIncludeDirectory(it, project) }
+                    ?.sortedBy { it.name }
+                    ?: return
+
+                children.forEachIndexed { index, child ->
+                    val isChildLast = index == children.size - 1
+                    val connector = if (isChildLast) "└── " else "├── "
+                    val nextPrefix = if (isChildLast) "$prefix    " else "$prefix│   "
+
+                    sb.append("$prefix$connector📁 ${child.name}\n")
+                    buildTree(child, nextPrefix, isChildLast)
+                }
+            }
+
+            buildTree(virtualFile, "", true)
+            sb.append("\n路径: `$absolutePath`")
+            sb.toString()
+        }
+    }
+
+    /**
+     * 获取指定目录下所有文件的完整路径（递归遍历，包含所有子目录）
+     * @param absolutePath 目录的绝对路径
+     * @return 所有文件的绝对路径列表
+     */
+    fun getAllFilesInDirectory(absolutePath: String): String {
+        Log.info("调用工具，获取目录下所有文件: $absolutePath")
+        return runReadAction {
+            val virtualFile = findVirtualFile(absolutePath)
+
+            if (virtualFile == null || !virtualFile.exists()) {
+                return@runReadAction "### ❌ 失败：路径不存在\n路径: `$absolutePath`"
+            }
+
+            if (!virtualFile.isDirectory) {
+                return@runReadAction "### ❌ 失败：该路径不是一个目录\n路径: `$absolutePath`"
+            }
+
+            val sb = StringBuilder()
+            sb.append("# 目录下的所有文件\n\n")
+            sb.append("📁 目录: `${virtualFile.name}`\n\n")
+
+            val allFiles = mutableListOf<String>()
+
+            // 递归收集所有文件
+            fun collectFiles(dir: VirtualFile) {
+                val children = dir.children ?: return
+                for (child in children) {
+                    if (child.isDirectory) {
+                        collectFiles(child)
+                    } else {
+                        allFiles.add(child.path)
+                    }
+                }
+            }
+
+            collectFiles(virtualFile)
+
+            if (allFiles.isEmpty()) {
+                return@runReadAction "# 目录下的所有文件\n\n📁 目录: `${virtualFile.name}`\n\n该目录下没有文件。"
+            }
+
+            // 按路径排序
+            allFiles.sort()
+
+            sb.append("| 序号 | 文件名 | 绝对路径 |\n")
+            sb.append("| :--- | :--- | :--- |\n")
+
+            allFiles.forEachIndexed { index, filePath ->
+                val fileName = filePath.substringAfterLast("/").substringAfterLast("\\")
+                sb.append("| ${index + 1} | $fileName | $filePath |\n")
+            }
+
+            sb.append("\n共 ${allFiles.size} 个文件")
+            sb.toString()
+        }
     }
 }
