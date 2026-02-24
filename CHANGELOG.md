@@ -25,6 +25,6 @@
   - 修复新建文件后再次编辑失败问题
   - 增加记忆库功能，AI自动感知会将有用的内容保存到记忆库中，记忆库可以手动维护
   - 去掉一次性获取所有文件功能改为获取所有目录减少上下文占用
-
-[Unreleased]: https://github.com/BBOYGF/OverCodePlugin/compare/v1.0.5...HEAD
-[1.0.5]: https://github.com/BBOYGF/OverCodePlugin/commits/v1.0.5
+- V1.0.7
+  - 修改插件 logo
+  - 修复插件在计划模式下也能修改代码问题

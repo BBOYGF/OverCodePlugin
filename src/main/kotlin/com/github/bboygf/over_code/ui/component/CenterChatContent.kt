@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import com.github.bboygf.over_code.enums.ChatRole
 import com.github.bboygf.over_code.vo.ChatMessageVo
 import com.github.bboygf.over_code.vo.MessagePart
+import com.intellij.icons.AllIcons
 
 
 /**
@@ -54,7 +55,8 @@ fun WelcomeScreen() {
                 ),
             contentAlignment = Alignment.Center
         ) {
-            Image(modifier = Modifier.width(200.dp).height(200.dp),painter = painterResource("/image/o.png"), contentDescription = "logo")
+            Image(modifier = Modifier.width(200.dp).height(200.dp)
+                ,painter = painterResource("/image/o.png"), contentDescription = "logo")
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -434,7 +436,7 @@ fun CodeBlock(
                     modifier = Modifier.size(24.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.DateRange,
+                        painter = painterResource("/image/copy.svg"),
                         contentDescription = "复制",
                         tint = Color(0xFF808080),
                         modifier = Modifier.size(16.dp)

@@ -128,6 +128,9 @@ intellijPlatform {
         ideaVersion {
             sinceBuild = providers.gradleProperty("pluginSinceBuild")
         }
+
+
+
     }
 
     // 插件签名配置（发布到插件市场时需要）

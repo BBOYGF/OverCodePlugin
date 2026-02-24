@@ -7,6 +7,8 @@
     <!-- 插件的开发商或作者信息。 -->
     <vendor>GuoFan</vendor>
 
+    <icon>pluginIcon.svg</icon>
+
     <!-- 依赖声明。com.intellij.modules.platform 表示该插件依赖于所有 IntelliJ IDE 共有的基础平台功能。 -->
     <depends>com.intellij.modules.platform</depends>
 
