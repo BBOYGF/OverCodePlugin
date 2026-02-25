@@ -19,6 +19,7 @@ import com.intellij.psi.*
 import com.intellij.psi.codeStyle.CodeStyleManager
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.PsiShortNamesCache
+import com.intellij.psi.search.PsiSearchHelper
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.psi.util.PsiTreeUtil
@@ -897,4 +898,267 @@ object ProjectFileUtils {
             sb.toString()
         }
     }
+
+    /**
+     * 根据变量名在项目中查找其定义位置
+     * @param project 项目对象
+     * @param variableName 变量名
+     * @return Markdown 格式的查找结果
+     */
+    fun findVariablesByName(project: Project, variableName: String): String {
+        Log.info("调用工具，根据变量名在项目中查找其定义位置。")
+        return runReadAction {
+            val scope = GlobalSearchScope.projectScope(project)
+            val results = mutableListOf<VariableSearchResult>()
+
+            // 1. 搜索字段（Field）- 类的成员变量
+            val fields = PsiShortNamesCache.getInstance(project).getFieldsByName(variableName, scope)
+            fields.forEach { field ->
+                val psiClass = field.containingClass
+                val psiFile = field.containingFile
+                val virtualFile = psiFile?.virtualFile
+
+                if (virtualFile != null) {
+                    val document = PsiDocumentManager.getInstance(project).getDocument(psiFile)
+                    val lineRange = if (document != null) {
+                        val start = document.getLineNumber(field.textRange.startOffset) + 1
+                        val end = document.getLineNumber(field.textRange.endOffset) + 1
+                        "$start - $end"
+                    } else {
+                        "未知"
+                    }
+
+                    results.add(
+                        VariableSearchResult(
+                            variableName = field.name ?: variableName,
+                            type = "字段 (Field)",
+                            declaringClass = psiClass?.qualifiedName ?: "顶层",
+                            fileName = virtualFile.name,
+                            filePath = virtualFile.path,
+                            lineRange = lineRange,
+                            codeSnippet = field.text.replace("\n", " ").take(80)
+                        )
+                    )
+                }
+            }
+
+            // 2. 搜索局部变量（LocalVariable）- 方法内的变量
+            // 使用 PsiSearchHelper 搜索
+            val fileIndex = ProjectRootManager.getInstance(project).fileIndex
+            runReadAction {
+                fileIndex.iterateContent { virtualFile ->
+                    if (!shouldInclude(virtualFile, project)) return@iterateContent true
+
+                    val psiFile = PsiManager.getInstance(project).findFile(virtualFile) ?: return@iterateContent true
+
+                    // 遍历 PSI 树查找局部变量
+                    psiFile.accept(object : PsiRecursiveElementVisitor() {
+                        override fun visitElement(element: PsiElement) {
+                            super.visitElement(element)
+
+                            // 检查是否是变量声明 (val 或 var)
+                            if (element is PsiVariable) {
+                                if (element.name == variableName) {
+                                    val psiClass = PsiTreeUtil.getParentOfType(element, PsiClass::class.java)
+                                    val document = PsiDocumentManager.getInstance(project).getDocument(psiFile)
+
+                                    val lineRange = if (document != null) {
+                                        val start = document.getLineNumber(element.textRange.startOffset) + 1
+                                        val end = document.getLineNumber(element.textRange.endOffset) + 1
+                                        "$start - $end"
+                                    } else {
+                                        "未知"
+                                    }
+
+                                    // 检查是否是局部变量（不是字段）
+                                    if (psiClass == null || !element.hasModifierProperty(PsiModifier.STATIC)) {
+                                        results.add(
+                                            VariableSearchResult(
+                                                variableName = element.name ?: variableName,
+                                                type = "局部变量 (Local Variable)",
+                                                declaringClass = "方法内",
+                                                fileName = virtualFile.name,
+                                                filePath = virtualFile.path,
+                                                lineRange = lineRange,
+                                                codeSnippet = element.text.replace("\n", " ").take(80)
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    })
+                    true // 继续遍历
+                }
+            }
+
+            if (results.isEmpty()) {
+                return@runReadAction "未在项目中找到名为 `$variableName` 的变量。"
+            }
+
+            val sb = StringBuilder()
+            sb.append("### 查找结果: `$variableName` \n\n")
+            sb.append("| 类型 | 变量名 | 所属类/方法 | 文件名 | 绝对路径 | 行号范围 | 代码片段 |\n")
+            sb.append("| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n")
+
+            results.forEach { result ->
+                sb.append("| ${result.type} | ${result.variableName} | ${result.declaringClass} | ${result.fileName} | ${result.filePath} | ${result.lineRange} | `${result.codeSnippet}` |\n")
+            }
+
+            sb.append("\n共找到 ${results.size} 处定义")
+            sb.toString()
+        }
+    }
+
+    private data class VariableSearchResult(
+        val variableName: String,
+        val type: String,
+        val declaringClass: String,
+        val fileName: String,
+        val filePath: String,
+        val lineRange: String,
+        val codeSnippet: String
+    )
+
+    /**
+     * 根据变量名或方法名查找其在项目中的引用位置
+     * @param project 项目对象
+     * @param name 变量名或方法名
+     * @return Markdown 格式的查找结果
+     */
+    fun findReferencesByName(project: Project, name: String): String {
+        Log.info("调用工具，根据变量名或方法名查找引用位置。")
+        return runReadAction {
+            val results = mutableListOf<ReferenceSearchResult>()
+            val fileIndex = ProjectRootManager.getInstance(project).fileIndex
+            val scope = GlobalSearchScope.projectScope(project)
+
+            // 1. 收集方法定义文件
+            val methodDefinitionFiles = mutableSetOf<VirtualFile>()
+            val methods = PsiShortNamesCache.getInstance(project).getMethodsByName(name, scope)
+            for (method in methods) {
+                method.containingFile?.virtualFile?.let { methodDefinitionFiles.add(it) }
+            }
+
+            // 2. 收集字段定义文件
+            val fieldDefinitionFiles = mutableSetOf<VirtualFile>()
+            val fields = PsiShortNamesCache.getInstance(project).getFieldsByName(name, scope)
+            for (field in fields) {
+                field.containingFile?.virtualFile?.let { fieldDefinitionFiles.add(it) }
+            }
+
+            // 3. 遍历项目文件，查找引用
+            fileIndex.iterateContent { virtualFile ->
+                if (!shouldInclude(virtualFile, project)) return@iterateContent true
+                // 跳过定义文件
+                if (methodDefinitionFiles.contains(virtualFile) || fieldDefinitionFiles.contains(virtualFile)) {
+                    return@iterateContent true
+                }
+
+                val psiFile = PsiManager.getInstance(project).findFile(virtualFile) ?: return@iterateContent true
+
+                // 遍历文件中的元素，查找匹配的引用
+                psiFile.accept(object : PsiRecursiveElementVisitor() {
+                    override fun visitElement(element: PsiElement) {
+                        super.visitElement(element)
+
+                        // 检查元素文本是否匹配名称
+                        if (element.text == name) {
+                            val containingFile = element.containingFile ?: return
+                            val containingVirtualFile = containingFile.virtualFile ?: return
+
+                            val document = PsiDocumentManager.getInstance(project).getDocument(containingFile)
+                            val lineRange = if (document != null) {
+                                val start = document.getLineNumber(element.textRange.startOffset) + 1
+                                val end = document.getLineNumber(element.textRange.endOffset) + 1
+                                "$start - $end"
+                            } else {
+                                "未知"
+                            }
+
+                            // 判断引用类型
+                            val type: String
+                            val declaringClass: String
+
+                            val parent = element.parent
+                            when (parent) {
+                                is PsiMethodCallExpression -> {
+                                    type = "方法引用"
+                                    val resolvedMethod = parent.resolveMethod()
+                                    declaringClass = resolvedMethod?.containingClass?.qualifiedName ?: "未知"
+                                }
+
+                                is PsiReferenceExpression -> {
+                                    val resolved = parent.resolve()
+                                    when (resolved) {
+                                        is PsiMethod -> {
+                                            type = "方法引用"
+                                            declaringClass = resolved.containingClass?.qualifiedName ?: "未知"
+                                        }
+
+                                        is PsiField -> {
+                                            type = "字段引用"
+                                            declaringClass = resolved.containingClass?.qualifiedName ?: "未知"
+                                        }
+
+                                        else -> {
+                                            type = "变量引用"
+                                            declaringClass = "局部"
+                                        }
+                                    }
+                                }
+
+                                else -> {
+                                    type = "变量引用"
+                                    declaringClass = "局部"
+                                }
+                            }
+
+                            results.add(
+                                ReferenceSearchResult(
+                                    name = name,
+                                    type = type,
+                                    declaringClass = declaringClass,
+                                    fileName = containingVirtualFile.name,
+                                    filePath = containingVirtualFile.path,
+                                    lineRange = lineRange,
+                                    codeSnippet = element.text.replace("\n", " ").take(80)
+                                )
+                            )
+                        }
+                    }
+                })
+                true
+            }
+
+            if (results.isEmpty()) {
+                return@runReadAction "未在项目中找到 `$name` 的引用位置。"
+            }
+
+            // 去重
+            val uniqueResults = results.distinctBy { "${it.filePath}-${it.lineRange}-${it.codeSnippet}" }
+
+            val sb = StringBuilder()
+            sb.append("### 引用查找结果: `$name` \n\n")
+            sb.append("| 类型 | 名称 | 定义位置 | 文件名 | 绝对路径 | 行号范围 | 代码片段 |\n")
+            sb.append("| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n")
+
+            uniqueResults.forEach { result ->
+                sb.append("| ${result.type} | ${result.name} | ${result.declaringClass} | ${result.fileName} | ${result.filePath} | ${result.lineRange} | `${result.codeSnippet}` |\n")
+            }
+
+            sb.append("\n共找到 ${uniqueResults.size} 处引用")
+            sb.toString()
+        }
+    }
+
+    private data class ReferenceSearchResult(
+        val name: String,
+        val type: String,
+        val declaringClass: String,
+        val fileName: String,
+        val filePath: String,
+        val lineRange: String,
+        val codeSnippet: String
+    )
 }

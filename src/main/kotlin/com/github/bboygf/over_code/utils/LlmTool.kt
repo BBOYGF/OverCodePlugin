@@ -329,6 +329,46 @@ object FindClassByNameTool : LlmTool {
     }
 }
 
+object FindVariablesByNameTool : LlmTool {
+    override val name = "find_variables_by_name"
+    override val description = "根据变量名在项目中查找其定义位置，包括字段和局部变量，并返回文件路径和行号范围"
+    override val parameters = buildJsonObject {
+        put("type", "object")
+        put("properties", buildJsonObject {
+            putJsonObject("variableName") {
+                put("type", "string")
+                put("description", "变量名")
+            }
+        })
+    }
+    override val isWriteTool = false
+
+    override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
+        val variableName = args["variableName"]?.jsonPrimitive?.content ?: ""
+        return ProjectFileUtils.findVariablesByName(project, variableName)
+    }
+}
+
+object FindReferencesByNameTool : LlmTool {
+    override val name = "find_references_by_name"
+    override val description = "根据变量名或方法名查找其在项目中的引用位置，包括方法、字段和局部变量的引用"
+    override val parameters = buildJsonObject {
+        put("type", "object")
+        put("properties", buildJsonObject {
+            putJsonObject("name") {
+                put("type", "string")
+                put("description", "变量名或方法名")
+            }
+        })
+    }
+    override val isWriteTool = false
+
+    override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
+        val name = args["name"]?.jsonPrimitive?.content ?: ""
+        return ProjectFileUtils.findReferencesByName(project, name)
+    }
+}
+
 object EditFileBySearchTool : LlmTool {
 
     override val name: String = "edit_file_by_search"
@@ -637,6 +677,8 @@ object ToolRegistry {
         GetMethodDetailTool,
         FindMethodsByNameTool,
         FindClassByNameTool,
+        FindVariablesByNameTool,
+        FindReferencesByNameTool,
         InspectProjectErrorsTool,
         CreateFileOrDirTool,
         DeleteFileTool,
