@@ -49,7 +49,7 @@ class ClaudeProvider(
         install(HttpTimeout) {
             requestTimeoutMillis = 5 * 60 * 1000
             socketTimeoutMillis = 3 * 60 * 1000
-            connectTimeoutMillis = 10 * 1000
+            connectTimeoutMillis = 60 * 1000
         }
     }
 

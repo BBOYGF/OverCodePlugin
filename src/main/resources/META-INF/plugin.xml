@@ -7,13 +7,11 @@
     <!-- 插件的开发商或作者信息。 -->
     <vendor>GuoFan</vendor>
 
-    <icon>pluginIcon.svg</icon>
-
     <!-- 依赖声明。com.intellij.modules.platform 表示该插件依赖于所有 IntelliJ IDE 共有的基础平台功能。 -->
     <depends>com.intellij.modules.platform</depends>
 
     <depends>com.intellij.modules.java</depends>
-<!--    <depends>org.jetbrains.kotlin</depends>-->
+    <!--    <depends>org.jetbrains.kotlin</depends>-->
 
 
     <!-- 国际化资源包。指向 src/main/resources/messages/MyBundle.properties，用于管理多语言文案。 -->

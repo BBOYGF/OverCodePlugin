@@ -201,7 +201,7 @@ object CreateFileOrDirTool : LlmTool {
 
     override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
         if (chatMode != ChatPattern.执行模式) {
-            return "当前为计划模式，请切换到执行模式！"
+            return "当前为计划模式，提醒用户需要切换到执行模式才能修改代码！"
         }
         val path = args["absolutePath"]?.jsonPrimitive?.content ?: ""
         val isDir = args["isDirectory"]?.jsonPrimitive?.booleanOrNull ?: false
@@ -267,7 +267,7 @@ object DeleteFileTool : LlmTool {
 
     override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
         if (chatMode != ChatPattern.执行模式) {
-            return "当前为计划模式，请切换到执行模式！"
+            return "当前为计划模式，提醒用户需要切换到执行模式才能修改代码！"
         }
         val path = args["absolutePath"]?.jsonPrimitive?.content ?: ""
         return ProjectFileUtils.deleteFile(project, path)
@@ -420,7 +420,7 @@ object EditFileBySearchTool : LlmTool {
         chatMode: ChatPattern
     ): String {
         if (chatMode != ChatPattern.执行模式) {
-            return "当前为计划模式，请切换到执行模式！"
+            return "当前为计划模式，提醒用户需要切换到执行模式才能修改代码！"
         }
         val filePath = args["filePath"]?.jsonPrimitive?.content ?: ""
         val oldString = args["oldString"]?.jsonPrimitive?.content ?: ""

@@ -343,15 +343,12 @@ object ProjectFileUtils {
         val cleanPath = sanitizePath(absolutePath)
         // 将路径转换为系统无关路径 (处理 Windows 反斜杠问题)
         val systemIndependentPath = FileUtil.toSystemIndependentName(cleanPath)
-
-        var result: VirtualFile? = null
-
         // 所有写操作必须在 WriteCommandAction 中执行，以支持 Undo 并确保线程安全
         return WriteCommandAction.runWriteCommandAction<String>(project) {
             try {
                 if (isDirectory) {
                     // 创建目录（如果父目录不存在会自动创建）
-                    result = VfsUtil.createDirectoryIfMissing(systemIndependentPath)
+                    VfsUtil.createDirectoryIfMissing(systemIndependentPath)
                     return@runWriteCommandAction "创建文件成功！"
                 } else {
                     // 创建文件
@@ -930,7 +927,7 @@ object ProjectFileUtils {
 
                     results.add(
                         VariableSearchResult(
-                            variableName = field.name ?: variableName,
+                            variableName = field.name,
                             type = "字段 (Field)",
                             declaringClass = psiClass?.qualifiedName ?: "顶层",
                             fileName = virtualFile.name,
