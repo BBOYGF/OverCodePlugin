@@ -495,12 +495,12 @@ object SmartReplacer {
      * @param replaceAll 是否替换所有匹配项
      * @param virtualFileFinder 用于查找 VirtualFile 的函数
      * @param commitAndFormat 用于提交和格式化的函数
-     * @return 操作结果信息
+     * @return 操作结果信息（包含修改位置信息）
      */
     fun editFileBySearch(
         project: Project,
         filePath: String,
-        oldString: String="",
+        oldString: String = "",
         newString: String,
         replaceAll: Boolean = false,
         virtualFileFinder: (String) -> VirtualFile?,
@@ -517,6 +517,9 @@ object SmartReplacer {
         }
         var newContent: String? = null
         var originalContentLength = 0
+        var oldContentStartLine = 1
+        var oldContentEndLine = 1
+        val originalContentBackup = StringBuilder()
 
         // 1. 读取阶段：在 Read Action 中计算新内容
         val readError = com.intellij.openapi.application.runReadAction<String?> {
@@ -525,6 +528,16 @@ object SmartReplacer {
 
             val originalContent = document.text
             originalContentLength = originalContent.length
+            // 备份原始内容
+            originalContentBackup.append(originalContent)
+
+            // 计算 oldString 在文档中的行号范围
+            val oldStringIndex = originalContent.indexOf(oldString)
+            if (oldStringIndex >= 0) {
+                oldContentStartLine = document.getLineNumber(oldStringIndex) + 1
+                oldContentEndLine = document.getLineNumber(oldStringIndex + oldString.length) + 1
+            }
+
             try {
                 newContent = smartReplace(originalContent, oldString, newString, replaceAll)
                 null // 无错误
@@ -538,6 +551,12 @@ object SmartReplacer {
 
         // 2. 写入阶段：在 EDT 中执行 WriteCommandAction
         var resultMessage = ""
+        val finalStartLine = oldContentStartLine
+        val finalEndLine = oldContentEndLine
+        val finalFilePath = filePath
+        val finalOldContent = oldString
+        val finalNewContent = newString
+
         val runnable = Runnable {
             WriteCommandAction.runWriteCommandAction(project) {
                 try {
@@ -548,8 +567,17 @@ object SmartReplacer {
                         resultMessage = "### ✅ 成功: 文件已更新 [${virtualFile.name}]\n" +
                                 "- 原始内容长度: $originalContentLength 字符\n" +
                                 "- 新内容长度: ${contentToWrite.length} 字符\n" +
-                                "- 替换模式: ${if (replaceAll) "全部替换" else "单处替换"}\n"+
-                                "请调用相关工具检查代码是否报错或者爆红。"
+                                "- 替换模式: ${if (replaceAll) "全部替换" else "单处替换"}\n" +
+                                "- 修改行号: 第 $finalStartLine - $finalEndLine 行\n" +
+                                "请调用相关工具检查代码是否报错或者爆红。\n\n" +
+                                // 附加 EditInfo 用于前端解析
+                                "[EDIT_INFO]\n" +
+                                "filePath=$finalFilePath\n" +
+                                "oldContent=${finalOldContent.replace("\n", "\\n").replace("|", "\\|")}\n" +
+                                "newContent=${finalNewContent.replace("\n", "\\n").replace("|", "\\|")}\n" +
+                                "startLine=$finalStartLine\n" +
+                                "endLine=$finalEndLine\n" +
+                                "[/EDIT_INFO]"
 
                     } else {
                         resultMessage = "### ❌ 失败: 无法获取文档对象用于写入 [${virtualFile.name}]"

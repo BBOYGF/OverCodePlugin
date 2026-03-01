@@ -37,6 +37,8 @@ import com.github.bboygf.over_code.ui.component.MessageBubble
 import com.github.bboygf.over_code.ui.component.WelcomeScreen
 import com.github.bboygf.over_code.ui.memory.MemoryPanel
 import com.github.bboygf.over_code.ui.model_config.ModelConfigurable
+import com.github.bboygf.over_code.utils.CodeEditNavigator
+import com.github.bboygf.over_code.vo.EditInfo
 import com.github.bboygf.over_code.vo.SessionInfo
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
@@ -355,7 +357,29 @@ fun OverCodeChatUI(project: Project? = null) {
                                 MessageBubble(
                                     message = message,
                                     onCopyCode = { viewModel.copyToClipboard(it) },
-                                    onInsertCode = { viewModel.insertCodeAtCursor(it) }
+                                    onInsertCode = { viewModel.insertCodeAtCursor(it) },
+                                    onNavigateToEdit = { editInfo ->
+                                        project?.let { p ->
+                                            CodeEditNavigator.navigateAndHighlight(
+                                                project = p,
+                                                filePath = editInfo.filePath,
+                                                startLine = editInfo.startLine,
+                                                endLine = editInfo.endLine
+                                            )
+                                        }
+                                    },
+                                    onShowDiff = { editInfo ->
+                                        project?.let { p ->
+                                            CodeEditNavigator.navigateAndShowDiff(
+                                                project = p,
+                                                filePath = editInfo.filePath,
+                                                oldContent = editInfo.oldContent,
+                                                newContent = editInfo.newContent,
+                                                startLine = editInfo.startLine,
+                                                endLine = editInfo.endLine
+                                            )
+                                        }
+                                    }
                                 )
                             }
                         }

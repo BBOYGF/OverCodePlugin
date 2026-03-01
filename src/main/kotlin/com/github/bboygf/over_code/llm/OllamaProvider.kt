@@ -49,14 +49,11 @@ class OllamaProvider(
         return try {
             withContext(Dispatchers.IO) {
                 // 提取 system 消息
-                val systemMessage = messages.find { it.role == "system" }?.content
                 val filteredMessages = messages.filter { it.role != "system" }
-
                 val requestBody = OpenAIRequest(
                     model = model,
                     messages = filteredMessages.map { it.toOpenAIMessage() },
                     stream = false,
-                    system = systemMessage
                 ).also {
                     Log.info("Ollama Request: ${Json.encodeToString(it)}")
                 }
@@ -83,14 +80,11 @@ class OllamaProvider(
         withContext(Dispatchers.IO) {
             try {
                 // 提取 system 消息
-                val systemMessage = messages.find { it.role == "system" }?.content
                 val filteredMessages = messages.filter { it.role != "system" }
-
                 val requestBody = OpenAIRequest(
                     model = model,
                     messages = filteredMessages.map { it.toOpenAIMessage() },
                     stream = true,
-                    system = systemMessage,
                     tools = tools?.map {
                         OpenAITool(
                             function = OpenAIFunction(

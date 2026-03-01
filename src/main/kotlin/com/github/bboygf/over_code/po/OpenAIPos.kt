@@ -1,5 +1,6 @@
 package com.github.bboygf.over_code.po
 
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -10,7 +11,7 @@ data class OpenAIRequest(
     val model: String,
     val messages: List<OpenAIMessage>,
     val stream: Boolean,
-    val system: String? = null,    // 系统提示词
+    // 移除顶层 system 字段，OpenAI 官方 API 不支持
     val tools: List<OpenAITool>? = null, // 新增：可选的工具列表
     val tool_choice: String? = null      // 新增："auto", "required" 或 "none"
 )
@@ -59,7 +60,7 @@ data class OpenAIFunction(
 
 @Serializable
 data class OpenAITool(
-    val type: String = "function",
+    @EncodeDefault val type: String = "function",
     val function: OpenAIFunction
 )
 

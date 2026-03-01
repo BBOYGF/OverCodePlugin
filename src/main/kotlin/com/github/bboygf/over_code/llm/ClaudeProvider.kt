@@ -66,15 +66,16 @@ class ClaudeProvider(
         return withContext(Dispatchers.IO) {
             try {
                 val requestBody = buildClaudeRequest(messages, null, stream = false)
-                val response: JsonObject = client.post(baseUrl) {
+                val response: JsonObject = client.post("$baseUrl/v1/messages") {
                     header("x-api-key", apiKey)
                     header("anthropic-version", "2023-06-01")
                     contentType(ContentType.Application.Json)
                     setBody(requestBody)
                 }.body()
 
-                val content =
-                    response["content"]?.jsonArray?.firstOrNull()?.jsonObject?.get("text")?.jsonPrimitive?.content ?: ""
+                val content = response["content"]?.jsonArray
+                    ?.firstOrNull { it.jsonObject["type"]?.jsonPrimitive?.content == "text" }
+                    ?.jsonObject?.get("text")?.jsonPrimitive?.content ?: ""
                 return@withContext content
             } catch (e: Exception) {
                 Log.error("ClaudeProvider chat方法调用失败", e)

@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.bboygf.over_code.enums.ChatRole
 import com.github.bboygf.over_code.vo.ChatMessageVo
+import com.github.bboygf.over_code.vo.EditInfo
 import com.github.bboygf.over_code.vo.MessagePart
 import com.intellij.icons.AllIcons
 
@@ -55,8 +56,11 @@ fun WelcomeScreen() {
                 ),
             contentAlignment = Alignment.Center
         ) {
-            Image(modifier = Modifier.width(200.dp).height(200.dp)
-                ,painter = painterResource("/image/o.png"), contentDescription = "logo")
+            Image(
+                modifier = Modifier.width(200.dp).height(200.dp),
+                painter = painterResource("/image/o.png"),
+                contentDescription = "logo"
+            )
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -131,12 +135,19 @@ fun WelcomeScreen() {
 fun MessageBubble(
     message: ChatMessageVo,
     onCopyCode: (String) -> Unit = {},
-    onInsertCode: (String) -> Unit = {}
+    onInsertCode: (String) -> Unit = {},
+    onNavigateToEdit: (EditInfo) -> Unit = {},
+    onShowDiff: (EditInfo) -> Unit = {}
 ) {
     // 是否是工具/函数调用角色
     val isTool = message.chatRole == ChatRole.工具
     // 控制展开状态，默认收起(false)
     var expanded by remember { mutableStateOf(false) }
+
+    // 解析 EditInfo
+    val editInfo = remember(message.content) {
+        EditInfo.parseFromResult(message.content)
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth().padding(4.dp),
@@ -234,6 +245,7 @@ fun MessageBubble(
                                 Spacer(Modifier.width(8.dp))
                                 Text(text = "我", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
+
                             ChatRole.工具 -> {
                                 Icon(
                                     imageVector = Icons.Default.Build, // 工具图标
@@ -249,6 +261,7 @@ fun MessageBubble(
                                     color = Color(0xFFFFA726)
                                 )
                             }
+
                             else -> {
                                 Text(
                                     text = "Over Code:",
@@ -302,6 +315,7 @@ fun MessageBubble(
                                     )
                                 }
                             }
+
                             is MessagePart.ListItem -> {
                                 Row(modifier = Modifier.padding(4.dp)) {
                                     SelectionContainer {
@@ -316,6 +330,7 @@ fun MessageBubble(
                                     }
                                 }
                             }
+
                             is MessagePart.Text -> {
                                 SelectionContainer {
                                     Text(
@@ -326,6 +341,7 @@ fun MessageBubble(
                                     )
                                 }
                             }
+
                             is MessagePart.Code -> {
                                 CodeBlock(
                                     code = part.content,
@@ -382,9 +398,60 @@ fun MessageBubble(
             } else {
                 contentBody()
             }
+
+            // 添加编辑操作按钮（如果有 EditInfo）
+            if (isTool && editInfo != null) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    color = Color.Gray.copy(alpha = 0.3f)
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // 跳转到修改位置按钮
+                    OutlinedButton(
+                        onClick = { onNavigateToEdit(editInfo) },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color(0xFF4A9D5F)
+                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "跳转到修改位置",
+                            fontSize = 12.sp
+                        )
+                    }
+
+                    // 显示差异对比按钮
+                    OutlinedButton(
+                        onClick = { onShowDiff(editInfo) },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color(0xFFFFA726)
+                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "显示修改对比",
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
         }
     }
 }
+
 /**
  * 代码块组件
  */

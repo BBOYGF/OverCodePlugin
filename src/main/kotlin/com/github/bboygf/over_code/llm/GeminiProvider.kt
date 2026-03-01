@@ -91,7 +91,9 @@ class GeminiProvider(
                     setBody(requestBody)
                 }.body()
 
-                return@withContext response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text ?: ""
+                val parts = response.candidates?.firstOrNull()?.content?.parts
+                val finalText = parts?.firstOrNull { it.thought?.jsonPrimitive?.boolean != true }?.text ?: ""
+                return@withContext finalText
             } catch (e: Exception) {
                 Log.error("GeminiProvider chat方法调用失败", e)
                 throw LLMException(parseGeminiError(e), e)
@@ -150,7 +152,7 @@ class GeminiProvider(
                                         if (thoughtValue is JsonPrimitive) {
                                             if (thoughtValue.isString) {
                                                 thoughtChunks.add(thoughtValue.content)
-                                                isThoughtPart =  true
+                                                isThoughtPart = true
                                             } else if (thoughtValue.content == "true") {
                                                 isThoughtPart = true
                                                 part.text?.let { thoughtChunks.add(it) }

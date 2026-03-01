@@ -813,7 +813,7 @@ object ProjectFileUtils {
 
             val sb = StringBuilder()
             sb.append("# 目录树形结构\n\n")
-            sb.append("📁 项目根路径: $projectPath")
+            sb.append("📁 项目根路径: $projectPath\n\n")
 
             // 递归构建树形结构
             fun buildTree(parentFile: VirtualFile, prefix: String, isLast: Boolean) {

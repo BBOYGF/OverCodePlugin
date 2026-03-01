@@ -16,6 +16,7 @@ import io.ktor.client.request.post
 import io.ktor.client.request.preparePost
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsChannel
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
@@ -73,15 +74,11 @@ class OpenAICompatibleProvider(
 
     override suspend fun chat(messages: List<LLMMessage>): String {
         return withContext(Dispatchers.IO) {
-            // 提取 system 消息
-            val systemMessage = messages.find { it.role == "system" }?.content
-            val filteredMessages = messages.filter { it.role != "system" }
-
+            // OpenAI 官方 API 不支持顶层 system 字段，直接使用原始 messages
             val requestBody = OpenAIRequest(
                 model = model,
-                messages = filteredMessages.map { it.toOpenAIMessage() },
-                stream = false,
-                system = systemMessage
+                messages = messages.map { it.toOpenAIMessage() },
+                stream = false
             ).also {
                 Log.info("OpenAI Request: ${Json.encodeToString(it)}")
             }
@@ -109,17 +106,18 @@ class OpenAICompatibleProvider(
         onThought: ((String) -> Unit)?
     ) {
         withContext(Dispatchers.IO) {
-            // 提取 system 消息
-            val systemMessage = messages.find { it.role == "system" }?.content
-            val filteredMessages = messages.filter { it.role != "system" }
-
+            // 不再单独提取 system 消息，直接使用原始 messages
+            // OpenAI 官方 API 不支持顶层 system 字段，需要放在 messages 数组中
             val requestBody = OpenAIRequest(
                 model = model,
-                messages = filteredMessages.map { it.toOpenAIMessage() },
+                messages = messages.map { it.toOpenAIMessage() },
                 stream = true,
-                system = systemMessage,
-                tools = tools?.map { OpenAITool(function = OpenAIFunction(it.name, it.description, it.parameters)) },
-                tool_choice = if (tools != null) "auto" else null
+                 tools = tools?.map {
+                     OpenAITool(
+                         function = OpenAIFunction(it.name, it.description, it.parameters)
+                     )
+                 },
+                 tool_choice = if (tools != null) "auto" else null
             ).also {
                 Log.info("OpenAI Request: ${Json.encodeToString(it)}")
             }
@@ -132,8 +130,9 @@ class OpenAICompatibleProvider(
                     setBody(requestBody)
                 }.execute { response ->
                     if (!response.status.isSuccess()) {
-                        Log.error(response.toString())
-                        throw LLMException("LLM API 响应错误: ${response.status}")
+                        val errorBody = response.body<String>()
+                        Log.error("HTTP ${response.status}: $errorBody")
+                        throw LLMException("LLM API 响应错误: ${response.status}, 详情: $errorBody")
                     }
                     val channel: ByteReadChannel = response.bodyAsChannel()
                     while (!channel.isClosedForRead) {

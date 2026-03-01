@@ -542,15 +542,15 @@ class HomeViewModel(
         llmMessages.add(LLMMessage(role = "system", content = DEFAULT_SYSTEM_PROMPT))
 
         // 2.2 添加记忆上下文
-        val memoryContext = getMemoryContext()
-        if (memoryContext.isNotBlank()) {
-            llmMessages.add(
-                LLMMessage(
-                    role = "system",
-                    content = "【项目记忆库】以下是这个项目的特殊记忆，在后续开发中请参考这些信息：\n\n$memoryContext\n\n请在发现项目特有的配置、架构约定、特殊依赖或代码规范时，主动调用 save_memory 工具保存到记忆库中。"
-                )
-            )
-        }
+//        val memoryContext = getMemoryContext()
+//        if (memoryContext.isNotBlank()) {
+//            llmMessages.add(
+//                LLMMessage(
+//                    role = "system",
+//                    content = "【项目记忆库】以下是这个项目的特殊记忆，在后续开发中请参考这些信息：\n\n$memoryContext\n\n请在发现项目特有的配置、架构约定、特殊依赖或代码规范时，主动调用 save_memory 工具保存到记忆库中。"
+//                )
+//            )
+//        }
 
         // 2.3 添加历史消息
         llmMessages.addAll(chatMessageVos.mapIndexed { index, msg ->
