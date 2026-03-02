@@ -210,46 +210,6 @@ object CreateFileOrDirTool : LlmTool {
     }
 }
 
-object ReplaceCodeByLineTool : LlmTool {
-    override val name = "replace_code_by_line"
-    override val description =
-        "根据文件名、起始行号、终止行号替换文件内容，（如果不确定行号请先获取行）请不要并行修改，防止修改同一个文件导致行号不读。"
-    override val parameters = buildJsonObject {
-        put("type", "object")
-        put("properties", buildJsonObject {
-            putJsonObject("absolutePath") {
-                put("type", "string")
-                put("description", "文件的绝对路径")
-            }
-            putJsonObject("startLine") {
-                put("type", "integer")
-                put("description", "起始行号 (从 1 开始)")
-            }
-            putJsonObject("endLine") {
-                put("type", "integer")
-                put("description", "结束行号 (从 1 开始)")
-            }
-            putJsonObject("newCodeString") {
-                put("type", "string")
-                put("description", "新的代码")
-            }
-        })
-    }
-    override val isWriteTool = true
-
-    override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
-        val absolutePath = args["absolutePath"]?.jsonPrimitive?.content ?: ""
-        val startLine = args["startLine"]?.jsonPrimitive?.let {
-            it.intOrNull ?: it.content.toIntOrNull()
-        } ?: 0
-        val endLine = args["endLine"]?.jsonPrimitive?.let {
-            it.intOrNull ?: it.content.toIntOrNull()
-        } ?: 0
-        val newCodeString = args["newCodeString"]?.jsonPrimitive?.content ?: ""
-        return ProjectFileUtils.replaceCodeByLine(project, absolutePath, startLine, endLine, newCodeString)
-    }
-
-}
 
 object DeleteFileTool : LlmTool {
     override val name = "delete_file"
@@ -666,6 +626,29 @@ object SaveMemoryTool : LlmTool {
     }
 }
 
+/**
+ * 全局搜索工具 - 搜索项目中的任何内容
+ */
+object GlobalSearchTool : LlmTool {
+    override val name = "global_search"
+    override val description = "全局搜索项目中的任何内容，包括类、方法、变量、字符串、注释等"
+    override val parameters = buildJsonObject {
+        put("type", "object")
+        put("properties", buildJsonObject {
+            putJsonObject("keyword") {
+                put("type", "string")
+                put("description", "要搜索的关键词")
+            }
+        })
+    }
+    override val isWriteTool = false
+
+    override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
+        val keyword = args["keyword"]?.jsonPrimitive?.content ?: ""
+        return ProjectFileUtils.globalSearch(project, keyword)
+    }
+}
+
 
 object ToolRegistry {
     val allTools = listOf(
@@ -689,5 +672,6 @@ object ToolRegistry {
         DeleteMemoryTool,
         SaveMemoryTool,
         GetDirectoryTreeTool,
+        GlobalSearchTool,
     )
 }

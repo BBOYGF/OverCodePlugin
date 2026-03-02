@@ -1,9 +1,11 @@
 package com.github.bboygf.over_code.utils
 
 import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx
+import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerImpl
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.runReadAction
+import com.intellij.openapi.application.runWriteAction
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.fileEditor.FileDocumentManager
@@ -26,6 +28,8 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.problems.WolfTheProblemSolver
 import kotlinx.io.IOException
 import java.io.File
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 object ProjectFileUtils {
 
@@ -630,6 +634,9 @@ object ProjectFileUtils {
         val sb = StringBuilder()
         sb.append("# 🚀 项目代码质量扫描报告\n\n")
 
+        // 1. 先触发代码分析并等待完成，确保问题文件索引是最新的
+        waitForCodeAnalysis(project)
+
         // 确保在 Read Action 中执行，防止 AccessDeniedException
         return ApplicationManager.getApplication().runReadAction<String> {
             val wolf = WolfTheProblemSolver.getInstance(project)
@@ -663,6 +670,47 @@ object ProjectFileUtils {
                 }
             }
             sb.toString()
+        }
+    }
+
+    /**
+     * 触发项目代码分析并等待完成，确保问题文件索引是最新的
+     */
+    private fun waitForCodeAnalysis(project: Project, timeoutSeconds: Long = 30) {
+        val daemon = DaemonCodeAnalyzerImpl.getInstance(project)
+
+        // 触发全项目代码分析
+        daemon.restart()
+
+        // 等待分析完成（带超时保护）
+        // 使用反射调用内部方法，避免版本兼容性问题
+        try {
+            val method = DaemonCodeAnalyzerImpl::class.java.getMethod(
+                "waitForDAForProjectInTests",
+                Project::class.java,
+                Long::class.javaPrimitiveType,
+                TimeUnit::class.java
+            )
+            method.invoke(daemon, project, timeoutSeconds, TimeUnit.SECONDS)
+        } catch (e: NoSuchMethodException) {
+            // 如果方法不存在，尝试使用替代方案
+            waitForAnalysisAlternative(project, timeoutSeconds)
+        } catch (e: Exception) {
+            // 其他异常也忽略，继续执行
+            println("代码分析等待异常: ${e.message}")
+        }
+    }
+
+    /**
+     * 等待代码分析的替代方案 - 使用简单延迟
+     */
+    private fun waitForAnalysisAlternative(project: Project, timeoutSeconds: Long) {
+        try {
+            // 简单等待一段时间，让代码分析有机会完成
+            // 注意：这是一种简化的方案，不检查实际分析状态
+            Thread.sleep(minOf(timeoutSeconds * 1000, 5000)) // 最多等待 5 秒
+        } catch (e: Exception) {
+            println("等待代码分析替代方案异常: ${e.message}")
         }
     }
 
@@ -1044,8 +1092,10 @@ object ProjectFileUtils {
                 field.containingFile?.virtualFile?.let { fieldDefinitionFiles.add(it) }
             }
 
-            // 3. 遍历项目文件，查找引用
+            // 3. 遍历项目文件，查找引用（最多30个）
+            val maxResults = 30
             fileIndex.iterateContent { virtualFile ->
+                if (results.size >= maxResults) return@iterateContent false // 达到上限，终止遍历
                 if (!shouldInclude(virtualFile, project)) return@iterateContent true
                 // 跳过定义文件
                 if (methodDefinitionFiles.contains(virtualFile) || fieldDefinitionFiles.contains(virtualFile)) {
@@ -1132,19 +1182,23 @@ object ProjectFileUtils {
                 return@runReadAction "未在项目中找到 `$name` 的引用位置。"
             }
 
-            // 去重
+            // 去重并限制数量
             val uniqueResults = results.distinctBy { "${it.filePath}-${it.lineRange}-${it.codeSnippet}" }
+            val totalCount = uniqueResults.size
+            val displayResults = uniqueResults.take(maxResults)
 
             val sb = StringBuilder()
             sb.append("### 引用查找结果: `$name` \n\n")
             sb.append("| 类型 | 名称 | 定义位置 | 文件名 | 绝对路径 | 行号范围 | 代码片段 |\n")
             sb.append("| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n")
 
-            uniqueResults.forEach { result ->
+            displayResults.forEach { result ->
                 sb.append("| ${result.type} | ${result.name} | ${result.declaringClass} | ${result.fileName} | ${result.filePath} | ${result.lineRange} | `${result.codeSnippet}` |\n")
             }
 
-            sb.append("\n共找到 ${uniqueResults.size} 处引用")
+            val extraInfo =
+                if (totalCount > maxResults) "（显示前 $maxResults 个结果，另有 ${totalCount - maxResults} 个结果未显示）" else ""
+            sb.append("\n共找到 $totalCount 处引用$extraInfo")
             sb.toString()
         }
     }
@@ -1157,5 +1211,97 @@ object ProjectFileUtils {
         val filePath: String,
         val lineRange: String,
         val codeSnippet: String
+    )
+
+    /**
+     * 全局搜索 - 搜索项目中的任何内容
+     * 包括：类、方法、变量、字符串常量等
+     */
+    fun globalSearch(project: Project, keyword: String): String {
+        Log.info("调用工具，全局搜索: $keyword")
+        if (keyword.isBlank()) {
+            return "搜索关键词不能为空"
+        }
+
+        return runReadAction {
+            val results = mutableListOf<GlobalSearchResult>()
+            val maxResults = 50
+
+            // 遍历项目文件搜索所有匹配内容
+            val fileIndex = ProjectRootManager.getInstance(project).fileIndex
+            val seen = mutableSetOf<String>() // 用于去重
+            fileIndex.iterateContent { virtualFile ->
+                if (results.size >= maxResults) return@iterateContent false
+                if (!shouldInclude(virtualFile, project)) return@iterateContent true
+
+                val psiFile = PsiManager.getInstance(project).findFile(virtualFile) ?: return@iterateContent true
+
+                psiFile.accept(object : PsiRecursiveElementVisitor() {
+                    override fun visitElement(element: PsiElement) {
+                        super.visitElement(element)
+                        if (results.size >= maxResults) return
+
+                        val text = element.text
+                        if (text.contains(keyword) && text.length < 200) {
+                            val doc = PsiDocumentManager.getInstance(project).getDocument(psiFile)
+                            val line = doc?.getLineNumber(element.textRange.startOffset)?.plus(1) ?: 1
+
+                            // 去重：文件路径+行号+类型
+                            val key = "${virtualFile.path}:$line:${element.javaClass.simpleName}"
+                            if (seen.contains(key)) return
+                            seen.add(key)
+
+                            // 判断类型
+                            val type = when (element) {
+                                is PsiComment -> "注释"
+                                is PsiLiteralExpression -> "字符串"
+                                is PsiClass -> "类"
+                                is PsiMethod -> "方法"
+                                is PsiVariable -> "变量"
+                                else -> "字符串"
+                            }
+                            results.add(
+                                GlobalSearchResult(
+                                    type,
+                                    text.take(50),
+                                    virtualFile.name,
+                                    virtualFile.path,
+                                    "第${line}行"
+                                )
+                            )
+                        }
+                    }
+                })
+                true
+            }
+
+            if (results.isEmpty()) {
+                return@runReadAction "未在项目中找到与 `$keyword` 相关的内容。"
+            }
+
+            // 构建结果
+            val sb = StringBuilder()
+            sb.appendLine("### 全局搜索结果: `$keyword`")
+            sb.appendLine()
+            sb.appendLine("| 类型 | 名称 | 文件名 | 路径 | 位置 |")
+            sb.appendLine("| :--- | :--- | :--- | :--- | :--- |")
+
+            results.take(maxResults).forEach { r ->
+                sb.appendLine("| ${r.type} | ${r.name} | ${r.fileName} | ${r.filePath} | ${r.location} |")
+            }
+
+            sb.appendLine()
+            sb.appendLine("共找到 ${results.size} 个结果")
+
+            sb.toString()
+        }
+    }
+
+    private data class GlobalSearchResult(
+        val type: String,
+        val name: String,
+        val fileName: String,
+        val filePath: String,
+        val location: String
     )
 }

@@ -119,6 +119,9 @@ fun OverCodeChatUI(project: Project? = null) {
     // 跟踪用户是否滚动到非底部位置
     var isUserAtBottom by remember { mutableStateOf(true) }
 
+    // 跟踪用户是否手动滚动过（一旦手动滚动就锁定，不再自动滚动）
+    var hasUserScrolled by remember { mutableStateOf(false) }
+
     // 注册输入框文本变更回调
     LaunchedEffect(viewModel) {
         viewModel.onInputTextChange = { text ->
@@ -156,6 +159,21 @@ fun OverCodeChatUI(project: Project? = null) {
         }
     }
 
+    // 监听聊天结束（isLoading 从 true 变为 false），自动滚动到底部
+    LaunchedEffect(viewModel.isLoading) {
+        if (!viewModel.isLoading && viewModel.chatMessageVos.isNotEmpty()) {
+            // 聊天结束，滚动到底部
+            try {
+                listState.scrollToItem(
+                    index = viewModel.chatMessageVos.size - 1,
+                    scrollOffset = Int.MAX_VALUE
+                )
+            } catch (e: Exception) {
+                println("聊天结束后滚动异常" + e.message)
+            }
+        }
+    }
+
     // 监听滚动状态，判断用户是否在底部（最后一个item的最后位置）
     LaunchedEffect(listState) {
         snapshotFlow {
@@ -174,9 +192,18 @@ fun OverCodeChatUI(project: Project? = null) {
             // 计算最后一个item底部距离视口底部的距离
             val distanceToBottom = viewportEndOffset - (scrollOffset + itemSize)
 
-            isLastItem && distanceToBottom <= 50
-        }.collect { isAtBottom ->
-            isUserAtBottom = isAtBottom
+            Triple(isLastItem, distanceToBottom, totalItems)
+        }.collect { (isAtBottom, distanceToBottom, totalItems) ->
+            // 如果用户在底部，释放锁定
+            if (isAtBottom && distanceToBottom <= 50) {
+                isUserAtBottom = true
+                // 用户手动滚动到底部，重置锁定状态
+                hasUserScrolled = false
+            } else {
+                // 用户滚动到非底部位置，设置锁定状态
+                isUserAtBottom = false
+                hasUserScrolled = true
+            }
         }
     }
 
@@ -407,9 +434,9 @@ fun OverCodeChatUI(project: Project? = null) {
                         val userInput = inputText
                         inputText = TextFieldValue("")
                         viewModel.sendMessage(userInput.text) {
-                            // 只有当用户在底部时才自动滚动
+                            // 只有当用户没有手动滚动过且在底部时才自动滚动
                             coroutineScope.launch {
-                                if (viewModel.chatMessageVos.isNotEmpty() && isUserAtBottom) {
+                                if (viewModel.chatMessageVos.isNotEmpty() && !hasUserScrolled && isUserAtBottom) {
                                     try {
                                         // 使用 scrollToItem 并设置一个大的 scrollOffset 来滚动到 item 底部
                                         // 这样即使消息很长，也能看到最新的内容
