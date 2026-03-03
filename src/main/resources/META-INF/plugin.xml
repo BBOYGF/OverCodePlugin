@@ -49,14 +49,7 @@
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt I"/>
         </action>
 
-        <!-- 发送异常到聊天框 - 辅助 AI 分析异常 (编辑器) -->
-        <action id="com.github.bboygf.over_code.InsertExceptionToAIAction"
-                class="com.github.bboygf.over_code.actions.InsertExceptionToAIAction"
-                text="Over Code: 发送异常到聊天"
-                description="将选中的异常信息发送到 Over Code 聊天输入框进行分析">
-            <add-to-group group-id="EditorPopupMenu" anchor="after"
-                          relative-to-action="com.github.bboygf.over_code.InsertToAIAction"/>
-        </action>
+
 
         <!-- 发送异常到聊天框 - 辅助 AI 分析异常 (控制台/Run窗口) -->
         <action id="com.github.bboygf.over_code.InsertExceptionToAIActionConsole"

@@ -147,25 +147,6 @@ object GetMethodDetailTool : LlmTool {
     }
 }
 
-object FindMethodsByNameTool : LlmTool {
-    override val name = "find_methods_by_name"
-    override val description = "根据方法名在项目中查找其所属的类、文件路径和行号范围"
-    override val parameters = buildJsonObject {
-        put("type", "object")
-        put("properties", buildJsonObject {
-            putJsonObject("methodName") {
-                put("type", "string")
-                put("description", "方法名")
-            }
-        })
-    }
-    override val isWriteTool = false
-
-    override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
-        val methodName = args["methodName"]?.jsonPrimitive?.content ?: ""
-        return ProjectFileUtils.findMethodsByName(project, methodName)
-    }
-}
 
 object InspectProjectErrorsTool : LlmTool {
     override val name = "inspect_project_errors"
@@ -308,6 +289,52 @@ object FindVariablesByNameTool : LlmTool {
         return ProjectFileUtils.findVariablesByName(project, variableName)
     }
 }
+
+object FindMethodsByNameTool : LlmTool {
+    override val name = "find_methods_by_name"
+    override val description = "根据方法名在项目中查找其所属的类、文件路径和行号范围"
+    override val parameters = buildJsonObject {
+        put("type", "object")
+        put("properties", buildJsonObject {
+            putJsonObject("methodName") {
+                put("type", "string")
+                put("description", "方法名")
+            }
+        })
+    }
+    override val isWriteTool = false
+
+    override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
+        val methodName = args["methodName"]?.jsonPrimitive?.content ?: ""
+        return ProjectFileUtils.findMethodsByName(project, methodName)
+    }
+}
+
+/**
+ * 全局搜索工具 - 搜索项目中的任何内容
+ */
+object GlobalSearchTool : LlmTool {
+    override val name = "global_search"
+    override val description =
+        "全局搜索项目中的任何内容，包括类、方法、变量、字符串、注释，同时支持搜索文件名。支持多关键词搜索（用空格分隔）。"
+    override val parameters = buildJsonObject {
+        put("type", "object")
+        put("properties", buildJsonObject {
+            putJsonObject("keyword") {
+                put("type", "string")
+                put("description", "要搜索的关键词，多个关键词用空格分隔，如：keyword1 keyword2")
+            }
+        })
+        put("required", buildJsonArray { add("keyword") })
+    }
+    override val isWriteTool = false
+
+    override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
+        val keyword = args["keyword"]?.jsonPrimitive?.content ?: ""
+        return ProjectFileUtils.globalSearch(project, keyword)
+    }
+}
+
 
 object FindReferencesByNameTool : LlmTool {
     override val name = "find_references_by_name"
@@ -623,29 +650,6 @@ object SaveMemoryTool : LlmTool {
         } catch (e: Exception) {
             "保存记忆失败: ${e.message}"
         }
-    }
-}
-
-/**
- * 全局搜索工具 - 搜索项目中的任何内容
- */
-object GlobalSearchTool : LlmTool {
-    override val name = "global_search"
-    override val description = "全局搜索项目中的任何内容，包括类、方法、变量、字符串、注释等"
-    override val parameters = buildJsonObject {
-        put("type", "object")
-        put("properties", buildJsonObject {
-            putJsonObject("keyword") {
-                put("type", "string")
-                put("description", "要搜索的关键词")
-            }
-        })
-    }
-    override val isWriteTool = false
-
-    override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
-        val keyword = args["keyword"]?.jsonPrimitive?.content ?: ""
-        return ProjectFileUtils.globalSearch(project, keyword)
     }
 }
 

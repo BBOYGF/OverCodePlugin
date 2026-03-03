@@ -1,7 +1,6 @@
 package com.github.bboygf.over_code.utils
 
 import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx
-import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerImpl
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.runReadAction
@@ -9,6 +8,7 @@ import com.intellij.openapi.application.runWriteAction
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.roots.ProjectRootManager
@@ -22,14 +22,13 @@ import com.intellij.psi.codeStyle.CodeStyleManager
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.PsiShortNamesCache
 import com.intellij.psi.search.PsiSearchHelper
+import com.intellij.psi.search.FilenameIndex
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.problems.WolfTheProblemSolver
 import kotlinx.io.IOException
 import java.io.File
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
 
 object ProjectFileUtils {
 
@@ -113,7 +112,7 @@ object ProjectFileUtils {
 
         // 3. 基础过滤：排除特定后缀
         val ignoredExtensions =
-            setOf("class", "jar", "exe", "dll", "pyc", "png", "jpg", "jpeg", "gif", "bmp", "sql", "log")
+            setOf("class", "jar", "exe", "dll", "pyc", "png", "jpg", "jpeg", "gif", "bmp", "sql", "log", "idea")
         if (ignoredExtensions.contains(file.extension?.lowercase())) return false
 
         return true
@@ -675,29 +674,31 @@ object ProjectFileUtils {
 
     /**
      * 触发项目代码分析并等待完成，确保问题文件索引是最新的
+     * 使用公共 API (DumbService) 替代内部 API
      */
     private fun waitForCodeAnalysis(project: Project, timeoutSeconds: Long = 30) {
-        val daemon = DaemonCodeAnalyzerImpl.getInstance(project)
+        val dumbService = DumbService.getInstance(project)
 
-        // 触发全项目代码分析
-        daemon.restart()
+        // 如果已经处于智能模式，说明索引已准备好
+        if (!dumbService.isDumb) {
+            return
+        }
 
-        // 等待分析完成（带超时保护）
-        // 使用反射调用内部方法，避免版本兼容性问题
-        try {
-            val method = DaemonCodeAnalyzerImpl::class.java.getMethod(
-                "waitForDAForProjectInTests",
-                Project::class.java,
-                Long::class.javaPrimitiveType,
-                TimeUnit::class.java
-            )
-            method.invoke(daemon, project, timeoutSeconds, TimeUnit.SECONDS)
-        } catch (e: NoSuchMethodException) {
-            // 如果方法不存在，尝试使用替代方案
-            waitForAnalysisAlternative(project, timeoutSeconds)
-        } catch (e: Exception) {
-            // 其他异常也忽略，继续执行
-            println("代码分析等待异常: ${e.message}")
+        // 等待智能模式完成（带超时）
+        val startTime = System.currentTimeMillis()
+        val timeoutMillis = timeoutSeconds * 1000
+
+        while (dumbService.isDumb) {
+            if (System.currentTimeMillis() - startTime > timeoutMillis) {
+                println("代码分析等待超时")
+                break
+            }
+            try {
+                Thread.sleep(100)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                break
+            }
         }
     }
 
@@ -1214,8 +1215,9 @@ object ProjectFileUtils {
     )
 
     /**
-     * 全局搜索 - 搜索项目中的任何内容
+     * 全局搜索 - 使用 IntelliJ 索引系统加速
      * 包括：类、方法、变量、字符串常量等
+     * 支持多关键词搜索（用空格分隔）和文件名搜索
      */
     fun globalSearch(project: Project, keyword: String): String {
         Log.info("调用工具，全局搜索: $keyword")
@@ -1223,78 +1225,278 @@ object ProjectFileUtils {
             return "搜索关键词不能为空"
         }
 
+        // 分割关键词
+        val keywords = keyword.trim().split("\\s+".toRegex()).filter { it.isNotBlank() }
+        if (keywords.isEmpty()) {
+            return "搜索关键词不能为空"
+        }
+
         return runReadAction {
             val results = mutableListOf<GlobalSearchResult>()
+            val seen = mutableSetOf<String>()
             val maxResults = 50
 
-            // 遍历项目文件搜索所有匹配内容
+            // 并行搜索各类内容
+            keywords.forEach { searchText ->
+                if (results.size >= maxResults) return@forEach
+
+                // 1. 搜索文件名
+                searchFileName(project, searchText, results, seen, maxResults)
+
+                // 2. 搜索类
+                if (results.size < maxResults) {
+                    searchClasses(project, searchText, results, seen, maxResults)
+                }
+
+                // 3. 搜索方法
+                if (results.size < maxResults) {
+                    searchMethods(project, searchText, results, seen, maxResults)
+                }
+
+                // 4. 搜索变量
+                if (results.size < maxResults) {
+                    searchVariables(project, searchText, results, seen, maxResults)
+                }
+
+                // 5. 搜索字符串和注释
+                if (results.size < maxResults) {
+                    searchStringsAndComments(project, searchText, results, seen, maxResults)
+                }
+            }
+
+            // 去重
+            val distinctResults = results.distinctBy { "${it.filePath}:${it.location}:${it.name}" }
+
+            if (distinctResults.isEmpty()) {
+                return@runReadAction "未在项目中找到与 `$keyword` 相关的内容。"
+            }
+
+            buildSearchResultString(distinctResults, keyword)
+        }
+    }
+
+    /**
+     * 搜索文件名
+     */
+    private fun searchFileName(
+        project: Project,
+        keyword: String,
+        results: MutableList<GlobalSearchResult>,
+        seen: MutableSet<String>,
+        maxResults: Int
+    ) {
+        try {
+            // 使用 ProjectFileIndex 遍历文件名
             val fileIndex = ProjectRootManager.getInstance(project).fileIndex
-            val seen = mutableSetOf<String>() // 用于去重
-            fileIndex.iterateContent { virtualFile ->
+            fileIndex.iterateContent { virtualFile: VirtualFile ->
+                if (results.size >= maxResults) return@iterateContent false
+                if (!shouldInclude(virtualFile, project)) return@iterateContent true
+
+                // 文件名包含关键词
+                if (virtualFile.name.contains(keyword, ignoreCase = true)) {
+                    val filePath = virtualFile.path
+                    val key = "filename:$filePath"
+                    if (!seen.contains(key)) {
+                        seen.add(key)
+                        results.add(
+                            GlobalSearchResult(
+                                "文件名",
+                                virtualFile.name,
+                                virtualFile.name,
+                                filePath,
+                                "文件名匹配"
+                            )
+                        )
+                    }
+                }
+                true
+            }
+        } catch (e: Exception) {
+            Log.warn("文件名搜索失败: ${e.message}")
+        }
+    }
+
+    /**
+     * 搜索类
+     */
+    private fun searchClasses(
+        project: Project,
+        keyword: String,
+        results: MutableList<GlobalSearchResult>,
+        seen: MutableSet<String>,
+        maxResults: Int
+    ) {
+        try {
+            val psiClasses =
+                JavaPsiFacade.getInstance(project).findClasses(keyword, GlobalSearchScope.projectScope(project))
+            psiClasses.take(maxResults - results.size).forEach { psiClass ->
+                val file = psiClass.containingFile
+                val filePath = file?.virtualFile?.path ?: return@forEach
+                val key = "class:$filePath"
+                if (!seen.contains(key)) {
+                    seen.add(key)
+                    results.add(
+                        GlobalSearchResult(
+                            "类",
+                            psiClass.name ?: "",
+                            file?.name ?: "",
+                            filePath,
+                            "类定义"
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.warn("类搜索失败: ${e.message}")
+        }
+    }
+
+    /**
+     * 搜索方法
+     */
+    private fun searchMethods(
+        project: Project,
+        keyword: String,
+        results: MutableList<GlobalSearchResult>,
+        seen: MutableSet<String>,
+        maxResults: Int
+    ) {
+        try {
+            // 使用 PsiShortNamesCache 进行方法搜索（利用索引）
+            val scope = GlobalSearchScope.projectScope(project)
+            val methods = PsiShortNamesCache.getInstance(project).getMethodsByName(keyword, scope)
+            methods.take(maxResults - results.size).forEach { method: PsiMethod ->
+                val file = method.containingFile
+                val filePath = file?.virtualFile?.path ?: return@forEach
+                val key = "method:$filePath:${method.name}"
+                if (!seen.contains(key)) {
+                    seen.add(key)
+                    results.add(
+                        GlobalSearchResult(
+                            "方法",
+                            method.name,
+                            file?.name ?: "",
+                            filePath,
+                            "方法定义"
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.warn("方法搜索失败: ${e.message}")
+        }
+    }
+
+    /**
+     * 搜索变量
+     */
+    private fun searchVariables(
+        project: Project,
+        keyword: String,
+        results: MutableList<GlobalSearchResult>,
+        seen: MutableSet<String>,
+        maxResults: Int
+    ) {
+        try {
+            // 使用 PsiShortNamesCache 进行字段搜索（利用索引）
+            val scope = GlobalSearchScope.projectScope(project)
+            val fields = PsiShortNamesCache.getInstance(project).getFieldsByName(keyword, scope)
+            fields.take(maxResults - results.size).forEach { field: PsiField ->
+                val file = field.containingFile
+                val filePath = file?.virtualFile?.path ?: return@forEach
+                val key = "field:$filePath:${field.name}"
+                if (!seen.contains(key)) {
+                    seen.add(key)
+                    results.add(
+                        GlobalSearchResult(
+                            "变量",
+                            field.name,
+                            file?.name ?: "",
+                            filePath,
+                            "变量定义"
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.warn("变量搜索失败: ${e.message}")
+        }
+    }
+
+    /**
+     * 搜索字符串和注释
+     */
+    private fun searchStringsAndComments(
+        project: Project,
+        keyword: String,
+        results: MutableList<GlobalSearchResult>,
+        seen: MutableSet<String>,
+        maxResults: Int
+    ) {
+        try {
+            // 使用 ProjectFileIndex 遍历文件内容
+            val fileIndex = ProjectRootManager.getInstance(project).fileIndex
+            fileIndex.iterateContent { virtualFile: VirtualFile ->
                 if (results.size >= maxResults) return@iterateContent false
                 if (!shouldInclude(virtualFile, project)) return@iterateContent true
 
                 val psiFile = PsiManager.getInstance(project).findFile(virtualFile) ?: return@iterateContent true
 
+                // 遍历文件内容查找关键词
                 psiFile.accept(object : PsiRecursiveElementVisitor() {
                     override fun visitElement(element: PsiElement) {
                         super.visitElement(element)
                         if (results.size >= maxResults) return
 
                         val text = element.text
-                        if (text.contains(keyword) && text.length < 200) {
+                        if (text.contains(keyword, ignoreCase = true) && text.length < 200) {
                             val doc = PsiDocumentManager.getInstance(project).getDocument(psiFile)
                             val line = doc?.getLineNumber(element.textRange.startOffset)?.plus(1) ?: 1
+                            val filePath = virtualFile.path
 
-                            // 去重：文件路径+行号+类型
-                            val key = "${virtualFile.path}:$line:${element.javaClass.simpleName}"
-                            if (seen.contains(key)) return
-                            seen.add(key)
-
-                            // 判断类型
-                            val type = when (element) {
-                                is PsiComment -> "注释"
-                                is PsiLiteralExpression -> "字符串"
-                                is PsiClass -> "类"
-                                is PsiMethod -> "方法"
-                                is PsiVariable -> "变量"
-                                else -> "字符串"
-                            }
-                            results.add(
-                                GlobalSearchResult(
-                                    type,
-                                    text.take(50),
-                                    virtualFile.name,
-                                    virtualFile.path,
-                                    "第${line}行"
+                            val key = "string:$filePath:$line"
+                            if (!seen.contains(key)) {
+                                seen.add(key)
+                                val type = when (element) {
+                                    is PsiComment -> "注释"
+                                    is PsiLiteralExpression -> "字符串"
+                                    else -> "字符串"
+                                }
+                                results.add(
+                                    GlobalSearchResult(
+                                        type,
+                                        text.take(50),
+                                        virtualFile.name,
+                                        filePath,
+                                        "第${line}行"
+                                    )
                                 )
-                            )
+                            }
                         }
                     }
                 })
                 true
             }
-
-            if (results.isEmpty()) {
-                return@runReadAction "未在项目中找到与 `$keyword` 相关的内容。"
-            }
-
-            // 构建结果
-            val sb = StringBuilder()
-            sb.appendLine("### 全局搜索结果: `$keyword`")
-            sb.appendLine()
-            sb.appendLine("| 类型 | 名称 | 文件名 | 路径 | 位置 |")
-            sb.appendLine("| :--- | :--- | :--- | :--- | :--- |")
-
-            results.take(maxResults).forEach { r ->
-                sb.appendLine("| ${r.type} | ${r.name} | ${r.fileName} | ${r.filePath} | ${r.location} |")
-            }
-
-            sb.appendLine()
-            sb.appendLine("共找到 ${results.size} 个结果")
-
-            sb.toString()
+        } catch (e: Exception) {
+            Log.warn("字符串搜索失败: ${e.message}")
         }
+    }
+
+    /**
+     * 构建搜索结果字符串
+     */
+    private fun buildSearchResultString(results: List<GlobalSearchResult>, keyword: String): String {
+        val sb = StringBuilder()
+        sb.appendLine("### 全局搜索结果: `$keyword`")
+        sb.appendLine()
+        sb.appendLine("| 类型 | 名称 | 文件名 | 路径 | 位置 |")
+        sb.appendLine("| :--- | :--- | :--- | :--- | :--- |")
+        results.take(50).forEach { r ->
+            sb.appendLine("| ${r.type} | ${r.name} | ${r.fileName} | ${r.filePath} | ${r.location} |")
+        }
+        sb.appendLine()
+        sb.appendLine("共找到 ${results.size} 个结果")
+        return sb.toString()
     }
 
     private data class GlobalSearchResult(
