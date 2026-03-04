@@ -3,6 +3,10 @@
 # OverCode Plugin Changelog
 
 ## [Unreleased]
+## [1.1.2]
+### Fixed
+
+- 修复聊天后滚动条没及时更新滚动问题
 
 ## [1.1.1]
 

@@ -119,9 +119,6 @@ fun OverCodeChatUI(project: Project? = null) {
     // 跟踪用户是否滚动到非底部位置
     var isUserAtBottom by remember { mutableStateOf(true) }
 
-    // 跟踪用户是否手动滚动过（一旦手动滚动就锁定，不再自动滚动）
-    var hasUserScrolled by remember { mutableStateOf(false) }
-
     // 注册输入框文本变更回调
     LaunchedEffect(viewModel) {
         viewModel.onInputTextChange = { text ->
@@ -189,20 +186,19 @@ fun OverCodeChatUI(project: Project? = null) {
             val itemSize = lastVisibleItem?.size ?: 0
             val viewportEndOffset = listState.layoutInfo.viewportEndOffset
 
-            // 计算最后一个item底部距离视口底部的距离
-            val distanceToBottom = viewportEndOffset - (scrollOffset + itemSize)
+            // 计算最后一个 item 的底部超出视口底部的距离
+            // 如果 > 0，说明用户向上滚动了，内容底部在屏幕下方
+            // 如果 <= 0，说明内容没有超出屏幕下方（要么刚好贴底，要么内容不够一屏）
+            val distanceToBottom = (scrollOffset + itemSize) - viewportEndOffset
 
             Triple(isLastItem, distanceToBottom, totalItems)
         }.collect { (isAtBottom, distanceToBottom, totalItems) ->
-            // 如果用户在底部，释放锁定
-            if (isAtBottom && distanceToBottom <= 50) {
-                isUserAtBottom = true
-                // 用户手动滚动到底部，重置锁定状态
-                hasUserScrolled = false
+            // 只要超出的距离 <= 50（允许 50 的弹性滚动误差），就认为在底部
+            isUserAtBottom = if (isAtBottom && distanceToBottom <= 50) {
+                true
+                // 用户向上滚动，离开了底部位置
             } else {
-                // 用户滚动到非底部位置，设置锁定状态
-                isUserAtBottom = false
-                hasUserScrolled = true
+                false
             }
         }
     }
@@ -429,20 +425,37 @@ fun OverCodeChatUI(project: Project? = null) {
                 onInputChange = { inputText = it },
                 isLoading = viewModel.isLoading,
                 onSend = {
-                    if (inputText.text.isNotBlank() || viewModel.selectedImageBase64List.isEmpty() != null) {
-
+                    if (inputText.text.isNotBlank() || viewModel.selectedImageBase64List.isNotEmpty()) {
                         val userInput = inputText
                         inputText = TextFieldValue("")
+                        coroutineScope.launch {
+                            try {
+                                // 当用户点击发送时，强制锁定为处于底部状态
+                                isUserAtBottom = true
+
+                                // 当不在底部时直接滚动可能会被后续 LaunchedEffect 覆盖
+                                // 为了避免这种时序问题，使用 animateScrollToItem 既有平滑滚动效果又不会瞬间触发无效判断
+                                listState.animateScrollToItem(
+                                    index = viewModel.chatMessageVos.size - 1,
+                                    scrollOffset = 10000
+                                )
+                            } catch (e: Exception) {
+                                println("聊天结束后滚动异常" + e.message)
+                            }
+                        }
                         viewModel.sendMessage(userInput.text) {
-                            // 只有当用户没有手动滚动过且在底部时才自动滚动
+                            // AI 流式输出时，只有用户在底部时才自动滚动
+                            // 不检查 hasUserScrolled，避免发送消息时的重置影响滚动
                             coroutineScope.launch {
-                                if (viewModel.chatMessageVos.isNotEmpty() && !hasUserScrolled && isUserAtBottom) {
+                                if (viewModel.chatMessageVos.isNotEmpty() && isUserAtBottom) {
                                     try {
+                                        // 增加短暂延迟，等待 Compose 根据新的流式文本完成重组和高度重新测量
+                                        kotlinx.coroutines.delay(50)
                                         // 使用 scrollToItem 并设置一个大的 scrollOffset 来滚动到 item 底部
                                         // 这样即使消息很长，也能看到最新的内容
                                         listState.scrollToItem(
                                             index = viewModel.chatMessageVos.size - 1,
-                                            scrollOffset = Int.MAX_VALUE
+                                            scrollOffset = 10000
                                         )
                                     } catch (e: Exception) {
                                         println("获取最后一行数据异常！" + e.message)
