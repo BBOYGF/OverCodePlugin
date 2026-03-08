@@ -522,7 +522,7 @@ object SmartReplacer {
         val originalContentBackup = StringBuilder()
 
         // 1. 读取阶段：在 Read Action 中计算新内容
-        val readError = com.intellij.openapi.application.runReadAction<String?> {
+        val readError = com.intellij.openapi.application.runReadAction {
             val document = FileDocumentManager.getInstance().getDocument(virtualFile)
                 ?: return@runReadAction "### ❌ 失败: 无法加载文件文档内容 [${virtualFile.name}]"
 
