@@ -3,6 +3,12 @@
 # OverCode Plugin Changelog
 
 ## [Unreleased]
+## [1.1.3]
+
+### Added
+
+- 优化 LOGO
+
 ## [1.1.2]
 ### Fixed
 
