@@ -24,25 +24,6 @@ interface LlmTool {
     }
 }
 
-
-//object GetProjectInfoTool : LlmTool {
-//    override val name = "get_project_files"
-//    override val description = "列出当前项目下所有的文件的完整路径。"
-//    override val parameters = buildJsonObject {
-//        put("type", "object")
-//        put("properties", buildJsonObject {})
-//    }
-//    override val isWriteTool = false
-//
-//    override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
-//        return try {
-//            ProjectFileUtils.exportToMarkdown(project)
-//        } catch (e: Exception) {
-//            "读取项目失败: ${e.message}"
-//        }
-//    }
-//}
-
 /**
  * 获取目录树形结构工具 - 只列出目录，使用 MD 树形图格式
  */
@@ -653,6 +634,127 @@ object SaveMemoryTool : LlmTool {
     }
 }
 
+/**
+ * 搜索第三方依赖库中的类工具
+ */
+object FindLibraryClassTool : LlmTool {
+    override val name = "find_library_class"
+    override val description = """
+        在第三方依赖库中查找类信息，包括方法、字段、内部类等。
+        支持两种搜索方式：
+            1. 精确搜索：输入类的完全限定名，如 org.apache.ibatis.session.SqlSession
+            2. 模糊搜索：仅输入类名，如 SqlSession，会自动在第三方库中查找所有匹配的类
+        
+        返回信息：
+            - 单个匹配：返回类的详细信息（方法列表、字段、继承关系、文件路径等）
+            - 多个匹配：返回候选类列表，供用户选择完整限定名
+        
+        示例：
+            - 精确搜索：find_library_class(className="org.apache.ibatis.session.SqlSession")
+            - 模糊搜索：find_library_class(className="SqlSession") → 返回候选列表
+            - 模糊搜索：find_library_class(className="ArrayList") → 返回 java.util.ArrayList 详情
+    """.trimIndent()
+
+    override val parameters = buildJsonObject {
+        put("type", "object")
+        put("properties", buildJsonObject {
+            putJsonObject("className") {
+                put("type", "string")
+                put(
+                    "description",
+                    "类名，支持两种格式：\n- 完全限定名：org.apache.ibatis.session.SqlSession（精确匹配）\n- 短类名：SqlSession（模糊匹配第三方库）"
+                )
+            }
+        })
+        put("required", buildJsonArray { add("className") })
+    }
+    override val isWriteTool = false
+
+    override fun execute(project: Project, args: Map<String, JsonElement>, chatMode: ChatPattern): String {
+        val className = args["className"]?.jsonPrimitive?.content ?: ""
+        if (className.isBlank()) {
+            return "搜索失败：className 不能为空"
+        }
+        return ProjectFileUtils.findLibraryClass(project, className)
+    }
+}
+
+/**
+ * 执行系统命令工具 - 支持 cmd、bash、git 等命令
+ */
+object ExecuteCommandTool : LlmTool {
+    override val name = "execute_command"
+    override val description = """
+        执行系统命令（支持 cmd、bash、git 等所有命令行工具）。
+        使用场景：
+            - 执行 Git 操作：git status, git commit, git push 等
+            - 执行构建命令：mvn clean install, gradle build 等
+            - 执行测试：mvn test, npm test 等
+            - 执行系统命令：ls, dir, cat, echo 等
+            - 执行脚本：python script.py, node app.js 等
+        
+        参数说明：
+            - command: 要执行的完整命令（必填）
+            - workingDirectory: 工作目录（可选，默认为项目根目录）
+            - timeout: 超时时间（可选，默认 30 秒，单位：秒）
+        
+        安全提示：
+            - 此工具需要执行模式才能运行
+            - 命令执行有风险，请谨慎使用
+            - 避免执行危险命令（如 rm -rf, del /f 等）
+        
+        示例：
+            - execute_command(command="git status")
+            - execute_command(command="mvn clean install", timeout=120)
+            - execute_command(command="ls -la", workingDirectory="/path/to/dir")
+    """.trimIndent()
+
+    override val parameters = buildJsonObject {
+        put("type", "object")
+        put("properties", buildJsonObject {
+            putJsonObject("command") {
+                put("type", "string")
+                put("description", "要执行的完整命令，如：git status, mvn clean install 等")
+            }
+            putJsonObject("workingDirectory") {
+                put("type", "string")
+                put("description", "工作目录（可选），默认为项目根目录")
+            }
+            putJsonObject("timeout") {
+                put("type", "integer")
+                put("description", "超时时间（秒），默认 30 秒")
+            }
+        })
+        put("required", buildJsonArray { add("command") })
+    }
+    override val isWriteTool = true // 设置为 true，需要执行模式才能运行
+
+    override fun execute(
+        project: Project,
+        args: Map<String, JsonElement>,
+        chatMode: ChatPattern
+    ): String {
+        if (chatMode != ChatPattern.执行模式) {
+            return "当前为计划模式，提醒用户需要切换到执行模式才能执行命令！"
+        }
+
+        val command = args["command"]?.jsonPrimitive?.content ?: ""
+        if (command.isBlank()) {
+            return "执行失败：command 不能为空"
+        }
+
+        val workingDirectory = args["workingDirectory"]?.jsonPrimitive?.contentOrNull
+        val timeout = args["timeout"]?.jsonPrimitive?.longOrNull ?: 30L
+
+        return ProjectFileUtils.executeCommand(
+            project = project,
+            command = command,
+            workingDirectory = workingDirectory,
+            timeoutSeconds = timeout
+        )
+    }
+}
+
 
 object ToolRegistry {
     val allTools = listOf(
@@ -677,5 +779,7 @@ object ToolRegistry {
         SaveMemoryTool,
         GetDirectoryTreeTool,
         GlobalSearchTool,
+        FindLibraryClassTool,
+        ExecuteCommandTool,
     )
 }

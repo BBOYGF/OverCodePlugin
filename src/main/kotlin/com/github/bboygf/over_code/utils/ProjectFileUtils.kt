@@ -29,6 +29,7 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.problems.WolfTheProblemSolver
 import kotlinx.io.IOException
 import java.io.File
+import java.util.concurrent.TimeUnit
 
 object ProjectFileUtils {
 
@@ -187,6 +188,7 @@ object ProjectFileUtils {
 
     /**
      * 根据文件路径、起始行号、终止行号读取文件内容（带行号）
+     * 注意：此方法不支持读取 .class 二进制文件
      *
      * @param absolutePath 文件的绝对路径
      * @param startLine 起始行号 (从 1 开始)
@@ -202,9 +204,20 @@ object ProjectFileUtils {
                 return "读取失败：文件不存在或路径是目录！"
             }
 
+            // 不支持读取 .class 二进制文件
+            if (absolutePath.endsWith(".class")) {
+                return "无法直接读取 .class 二进制文件。请使用反编译类读取工具来查看反编译后的源码。"
+            }
+
             runReadAction {
+                // 尝试通过 Document 获取文件内容
                 val document = FileDocumentManager.getInstance().getDocument(virtualFile)
-                val rawContent = document?.text ?: VfsUtil.loadText(virtualFile)
+
+                if (document == null) {
+                    return@runReadAction "无法读取文件内容，可能是二进制文件"
+                }
+
+                val rawContent = document.text
                 val lines = rawContent.lines()
 
                 val result = StringBuilder()
@@ -227,7 +240,6 @@ object ProjectFileUtils {
             errorMsg
         }
     }
-
 
     /**
      * 根据文件获取文件内所有方法详情（返回行号信息）
@@ -1506,4 +1518,265 @@ object ProjectFileUtils {
         val filePath: String,
         val location: String
     )
+
+    /**
+     * 搜索第三方依赖库中的类
+     * @param project 项目实例
+     * @param className 类名，支持两种格式：
+     *                  1. 完全限定名：org.apache.ibatis.session.SqlSession（精确匹配）
+     *                  2. 短类名：SqlSession（模糊匹配第三方库中的所有同名类）
+     * @return 库类信息字符串
+     */
+    fun findLibraryClass(project: Project, className: String): String {
+        if (className.isBlank()) {
+            return "搜索失败：类名不能为空"
+        }
+        return try {
+            runReadAction {
+                val fileIndex = ProjectFileIndex.getInstance(project)
+                val allScope = GlobalSearchScope.allScope(project)
+
+                val libraryClasses: List<PsiClass>
+
+                // 判断是精确匹配还是模糊匹配
+                if (className.contains(".")) {
+                    // 精确匹配：使用完全限定名搜索
+                    val allClasses = JavaPsiFacade.getInstance(project).findClasses(className, allScope)
+
+                    // 过滤出库中的类（排除项目源码）
+                    val basePath = project.basePath ?: ""
+                    libraryClasses = allClasses.filter { psiClass ->
+                        val file = psiClass.containingFile?.virtualFile
+                        file != null && (
+                                fileIndex.isInLibraryClasses(file) ||
+                                        fileIndex.isInLibrarySource(file) ||
+                                        (basePath.isNotEmpty() && !file.path.startsWith(basePath))
+                                )
+                    }
+
+                    if (libraryClasses.isEmpty()) {
+                        // 检查是否在项目源码中
+                        val inSourceClasses = allClasses.filter { psiClass ->
+                            val file = psiClass.containingFile?.virtualFile
+                            file != null && fileIndex.isInSource(file)
+                        }
+                        return@runReadAction if (inSourceClasses.isNotEmpty()) {
+                            "找到类 $className，但它位于项目源码中（非第三方库）"
+                        } else {
+                            "未找到类：$className\n\n请检查类名是否正确，格式应为：包名。类名，如 org.apache.ibatis.session.SqlSession\n或者只输入类名进行模糊搜索，如：SqlSession"
+                        }
+                    }
+                } else {
+                    // 模糊匹配：使用短类名搜索第三方库
+                    val shortNameIndex = com.intellij.psi.search.PsiShortNamesCache.getInstance(project)
+                    val allClasses = shortNameIndex.getClassesByName(className, allScope)
+
+                    // 过滤：只保留第三方库中的类
+                    libraryClasses = allClasses.filter { psiClass ->
+                        val file = psiClass.containingFile?.virtualFile
+                        file != null && (
+                                fileIndex.isInLibraryClasses(file) ||
+                                        fileIndex.isInLibrarySource(file)
+                                )
+                    }
+
+                    if (libraryClasses.isEmpty()) {
+                        return@runReadAction "在第三方库中未找到类名 '$className'\n\n提示：\n- 如果知道完整包名，请使用完整限定名，如：org.apache.ibatis.session.SqlSession\n- 请检查类名拼写是否正确"
+                    }
+                }
+
+                // 如果匹配到多个类，返回候选列表
+                if (libraryClasses.size > 1) {
+                    val candidates = libraryClasses.mapNotNull { it.qualifiedName }.sorted()
+                    return@runReadAction buildString {
+                        appendLine("找到 ${libraryClasses.size} 个匹配的类，请使用完整限定名再次搜索：\n")
+                        candidates.forEachIndexed { index, name ->
+                            appendLine("${index + 1}. $name")
+                        }
+                        appendLine("\n示例：find_library_class(className=\"org.apache.ibatis.session.SqlSession\")")
+                    }
+                }
+
+                buildLibraryClassInfo(libraryClasses.first())
+            }
+        } catch (e: Exception) {
+            Log.warn("库类搜索失败：${e.message}")
+            "搜索库类失败：${e.message}"
+        }
+    }
+
+    /**
+     * 构建库类信息字符串
+     */
+    private fun buildLibraryClassInfo(psiClass: PsiClass): String {
+        return try {
+            val sb = StringBuilder()
+
+            // 获取文件路径
+            val virtualFile = psiClass.containingFile?.virtualFile
+            val filePath = virtualFile?.path ?: "未知"
+            val isDecompiled = filePath.contains("/sources/") || filePath.contains("decompiled")
+
+            sb.appendLine("## ${psiClass.name}")
+            sb.appendLine()
+            sb.appendLine("**完全限定名**: ${psiClass.qualifiedName}")
+            sb.appendLine()
+            sb.appendLine("**文件路径**: $filePath")
+            if (isDecompiled) {
+                sb.appendLine("**注意**: 此为反编译代码，非原始源码")
+            }
+            sb.appendLine()
+
+            // 获取修饰符
+            val modifiers = psiClass.modifierList?.text ?: ""
+            sb.appendLine("**修饰符**: $modifiers")
+            sb.appendLine()
+
+            // 获取父类
+            val superClass = psiClass.superClass
+            if (superClass != null && superClass.qualifiedName != "java.lang.Object") {
+                sb.appendLine("**继承**: ${superClass.qualifiedName}")
+                sb.appendLine()
+            }
+
+            // 获取实现的接口
+            val interfaces = psiClass.interfaces
+            if (interfaces.isNotEmpty()) {
+                sb.appendLine("**实现接口**:")
+                interfaces.forEach { sb.appendLine("  - ${it.qualifiedName}") }
+                sb.appendLine()
+            }
+
+            // 获取内部类
+            val innerClasses = psiClass.innerClasses
+            if (innerClasses.isNotEmpty()) {
+                sb.appendLine("**内部类**:")
+                innerClasses.forEach { sb.appendLine("  - ${it.name}") }
+                sb.appendLine()
+            }
+
+            // 获取所有方法
+            val methods = psiClass.methods
+            if (methods.isNotEmpty()) {
+                sb.appendLine("**方法列表** (共 ${methods.size} 个):")
+                sb.appendLine()
+                sb.appendLine("| 方法内容|")
+                sb.appendLine("| :--- |")
+                methods.forEach { method ->
+                    sb.appendLine("| ${method.text}|")
+                }
+                sb.appendLine()
+            }
+
+            // 获取所有字段
+            val fields = psiClass.fields
+            if (fields.isNotEmpty()) {
+                sb.appendLine("**字段列表** (共 ${fields.size} 个):")
+                sb.appendLine()
+                sb.appendLine("| 字段名 | 类型 |")
+                sb.appendLine("| :--- | :--- |")
+                fields.forEach { field ->
+                    sb.appendLine("| ${field.name} | ${field.type.presentableText} |")
+                }
+                sb.appendLine()
+            }
+            sb.toString()
+        } catch (e: Exception) {
+            "构建库类信息失败：${e.message}"
+        }
+    }
+
+    /**
+     * 执行系统命令
+     * @param project 项目实例
+     * @param command 要执行的命令
+     * @param workingDirectory 工作目录，默认为项目根目录
+     * @param timeoutSeconds 超时时间（秒），默认 30 秒
+     * @return 命令执行结果（包含 stdout、stderr 和退出码）
+     */
+    fun executeCommand(
+        project: Project,
+        command: String,
+        workingDirectory: String? = null,
+        timeoutSeconds: Long = 30
+    ): String {
+        Log.info("调用工具，执行命令：$command, 工作目录：$workingDirectory")
+
+        if (command.isBlank()) {
+            return "### ❌ 失败：命令不能为空"
+        }
+
+        return try {
+            val workDir = workingDirectory?.let { File(it) } ?: project.basePath?.let { File(it) }
+
+            // 根据操作系统解析命令
+            val processBuilder = if (isWindows()) {
+                ProcessBuilder("cmd.exe", "/c", command)
+            } else {
+                ProcessBuilder("bash", "-c", command)
+            }
+
+            // 设置工作目录
+            workDir?.let { processBuilder.directory(it) }
+
+            // 启动进程
+            val process = processBuilder.start()
+
+            // 等待执行完成（带超时）
+            val completed = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+
+            if (!completed) {
+                process.destroyForcibly()
+                return "### ❌ 失败：命令执行超时（超过 $timeoutSeconds 秒）\n命令：$command"
+            }
+
+            // 读取输出
+            val stdout = process.inputStream.bufferedReader().readText().trim()
+            val stderr = process.errorStream.bufferedReader().readText().trim()
+            val exitCode = process.exitValue()
+
+            buildString {
+                appendLine("### 命令执行结果")
+                appendLine()
+                appendLine("**命令**: `$command`")
+                if (workDir != null) {
+                    appendLine("**工作目录**: `${workDir.absolutePath}`")
+                }
+                appendLine("**退出码**: $exitCode")
+                appendLine()
+
+                if (stdout.isNotEmpty()) {
+                    appendLine("#### 标准输出 (stdout)")
+                    appendLine("```")
+                    appendLine(stdout)
+                    appendLine("```")
+                    appendLine()
+                }
+
+                if (stderr.isNotEmpty()) {
+                    appendLine("#### 错误输出 (stderr)")
+                    appendLine("```")
+                    appendLine(stderr)
+                    appendLine("```")
+                    appendLine()
+                }
+
+                if (exitCode == 0 && stderr.isEmpty()) {
+                    appendLine("✅ 命令执行成功")
+                } else if (exitCode != 0) {
+                    appendLine("⚠️ 命令执行失败（退出码：$exitCode）")
+                }
+            }
+        } catch (e: Exception) {
+            Log.error("执行命令失败", e)
+            "### ❌ 失败：执行命令时发生异常\n命令：$command\n错误：${e.message}"
+        }
+    }
+
+    /**
+     * 判断是否为 Windows 系统
+     */
+    private fun isWindows(): Boolean {
+        return System.getProperty("os.name").lowercase().contains("win")
+    }
 }
