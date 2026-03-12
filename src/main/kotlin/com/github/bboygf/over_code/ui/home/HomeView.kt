@@ -1,29 +1,21 @@
 package com.github.bboygf.over_code.ui.home
 
 import androidx.compose.desktop.ui.tooling.preview.Preview
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.VerticalScrollbar
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollbarAdapter
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposePanel
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
@@ -32,27 +24,23 @@ import androidx.compose.ui.unit.sp
 import com.github.bboygf.over_code.llm.LLMService
 import com.github.bboygf.over_code.services.ChatDatabaseService
 import com.github.bboygf.over_code.services.HomeViewModelService
+import com.github.bboygf.over_code.ui.about.AboutDialog
 import com.github.bboygf.over_code.ui.component.BottomInputArea
 import com.github.bboygf.over_code.ui.component.MessageBubble
 import com.github.bboygf.over_code.ui.component.WelcomeScreen
+import com.github.bboygf.over_code.ui.history.HistoryScreen
 import com.github.bboygf.over_code.ui.memory.MemoryPanel
 import com.github.bboygf.over_code.ui.model_config.ModelConfigurable
 import com.github.bboygf.over_code.utils.CodeEditNavigator
-import com.github.bboygf.over_code.vo.EditInfo
-import com.github.bboygf.over_code.vo.SessionInfo
+import com.github.bboygf.over_code.vo.ChatTab
+import com.intellij.openapi.fileChooser.FileChooser
+import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
-import com.intellij.openapi.fileChooser.FileChooser
-import com.intellij.openapi.fileChooser.FileChooserDescriptor
-import com.intellij.ide.BrowserUtil
-
-import com.intellij.ide.plugins.PluginManagerCore
-import com.intellij.openapi.extensions.PluginId
 import com.intellij.ui.content.ContentFactory
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
 import java.util.*
 import javax.swing.JComponent
 
@@ -194,7 +182,7 @@ fun OverCodeChatUI(project: Project? = null) {
             Triple(isLastItem, distanceToBottom, totalItems)
         }.collect { (isAtBottom, distanceToBottom, totalItems) ->
             // 只要超出的距离 <= 50（允许 50 的弹性滚动误差），就认为在底部
-            isUserAtBottom = if (isAtBottom && distanceToBottom <= 50) {
+            isUserAtBottom = if (isAtBottom && distanceToBottom <= 100) {
                 true
                 // 用户向上滚动，离开了底部位置
             } else {
@@ -318,7 +306,29 @@ fun OverCodeChatUI(project: Project? = null) {
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = surfaceColor,
                     titleContentColor = textPrimaryColor
-                )
+                ),
+                modifier = Modifier.height(45.dp)
+            )
+
+            // Tab 栏
+            ChatTabRow(
+                tabs = viewModel.tabs,
+                activeTabId = viewModel.activeTabId,
+                onTabClick = { tabId ->
+                    viewModel.switchTab(tabId)
+                    viewModel.showHistory = false
+                    viewModel.showMemoryPanel = false
+                },
+                onTabClose = { tabId ->
+                    viewModel.closeTab(tabId)
+                },
+                onNewTab = {
+                    viewModel.createNewSession()
+                },
+                backgroundColor = surfaceColor,
+                primaryColor = primaryColor,
+                textPrimaryColor = textPrimaryColor,
+                textSecondaryColor = textSecondaryColor
             )
 
             // 中央区域
@@ -535,382 +545,101 @@ fun OverCodeChatUI(project: Project? = null) {
     }
 }
 
+
 /**
- * 历史会话列表界面
+ * Chat Tab Row - 聊天标签栏组件
  */
 @Composable
-fun HistoryScreen(
-    viewModel: HomeViewModel,
+fun ChatTabRow(
+    tabs: List<ChatTab>,
+    activeTabId: String,
+    onTabClick: (String) -> Unit,
+    onTabClose: (String) -> Unit,
+    onNewTab: () -> Unit,
     backgroundColor: Color,
-    surfaceColor: Color,
-    textPrimaryColor: Color,
-    textSecondaryColor: Color,
-    primaryColor: Color
-) {
-    val dateFormat = remember { SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(backgroundColor)
-            .padding(8.dp)
-    ) {
-        Text(
-            text = "历史会话",
-            fontSize = 16.sp,
-            color = textPrimaryColor,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-
-        if (viewModel.sessions.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(text = "暂无历史记录", color = textSecondaryColor)
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(viewModel.sessions) { session ->
-                    HistoryItem(
-                        session = session,
-                        isSelected = session.sessionId == viewModel.currentSessionId,
-                        dateFormat = dateFormat,
-                        surfaceColor = surfaceColor,
-                        textPrimaryColor = textPrimaryColor,
-                        textSecondaryColor = textSecondaryColor,
-                        primaryColor = primaryColor,
-                        onClick = {
-                            viewModel.loadMessages(session.sessionId)
-                            viewModel.showHistory = false
-                        },
-                        onDelete = {
-                            viewModel.deleteSession(session.sessionId)
-                        }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun HistoryItem(
-    session: SessionInfo,
-    isSelected: Boolean,
-    dateFormat: SimpleDateFormat,
-    surfaceColor: Color,
-    textPrimaryColor: Color,
-    textSecondaryColor: Color,
     primaryColor: Color,
-    onClick: () -> Unit,
-    onDelete: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) surfaceColor.copy(alpha = 0.8f) else surfaceColor
-        ),
-        border = if (isSelected) CardDefaults.outlinedCardBorder()
-            .copy(brush = androidx.compose.ui.graphics.SolidColor(primaryColor)) else null
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(12.dp)
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = session.title,
-                    fontSize = 14.sp,
-                    color = textPrimaryColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = dateFormat.format(Date(session.updatedAt)),
-                    fontSize = 12.sp,
-                    color = textSecondaryColor
-                )
-            }
-            IconButton(onClick = onDelete) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "删除会话",
-                    tint = textSecondaryColor,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
-    }
-}
-
-/**
- * 功能行组件
- */
-@Composable
-private fun FeatureRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    text: String,
-    primaryColor: Color,
+    textPrimaryColor: Color,
     textSecondaryColor: Color
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .height(45.dp)
+            .background(backgroundColor)
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = primaryColor,
-            modifier = Modifier.size(16.dp)
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = text,
-            fontSize = 12.sp,
-            color = textSecondaryColor
-        )
-    }
-}
-
-/**
- * 链接按钮组件
- */
-@Composable
-private fun LinkButton(
-    text: String,
-    url: String,
-    primaryColor: Color
-) {
-    Surface(
-        modifier = Modifier
-            .clickable { BrowserUtil.browse(url) },
-        color = primaryColor.copy(alpha = 0.1f),
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Text(
-            text = text,
-            fontSize = 11.sp,
-            color = primaryColor,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-        )
-    }
-}
-
-/**
- * 关于对话框 - 带章鱼设计
- */
-@Composable
-private fun AboutDialog(
-    onDismissRequest: () -> Unit,
-    backgroundColor: Color,
-    surfaceColor: Color,
-    primaryColor: Color,
-    textPrimaryColor: Color,
-    textSecondaryColor: Color
-) {
-    // 动态获取插件版本号
-    val pluginVersion = remember {
-        PluginManagerCore.getPlugin(PluginId.getId("com.guofan.overcode"))?.version?.toString() ?: "未知"
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismissRequest,
-        title = {
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "关于 OverCode",
-                    color = textPrimaryColor,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // 章鱼 Logo 区域 - 带渐变光晕
-                Box(
-                    modifier = Modifier
-                        .size(150.dp)
-                        .background(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    primaryColor.copy(alpha = 0.3f),
-                                    Color.Transparent
-                                )
-                            ),
-                            shape = CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Image(
-                        modifier = Modifier
-                            .size(150.dp)
-                            .padding(8.dp),
-                        painter = painterResource("/image/o.png"),
-                        contentDescription = "Octopus Logo"
-                    )
+        // 渲染每个 Tab
+        tabs.forEach { tab ->
+            val isActive = tab.id == activeTabId
+            Surface(
+                modifier = Modifier
+                    .padding(horizontal = 4.dp)
+                    .clickable { onTabClick(tab.id) },
+                color = if (isActive) primaryColor.copy(alpha = 0.2f) else backgroundColor,
+                shape = RoundedCornerShape(4.dp),
+                border = if (isActive) {
+                    androidx.compose.foundation.BorderStroke(1.dp, primaryColor)
+                } else {
+                    androidx.compose.foundation.BorderStroke(1.dp, textSecondaryColor.copy(alpha = 0.3f))
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 插件名称
-                Text(
-                    text = "OverCode",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = primaryColor
-                )
-
-                Text(
-                    text = "IntelliJ IDEA AI 编程助手",
-                    fontSize = 12.sp,
-                    color = textSecondaryColor,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-
-                // 版本号
-                Surface(
-                    color = primaryColor.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Tab 标题
                     Text(
-                        text = "Version $pluginVersion",
-                        fontSize = 11.sp,
-                        color = primaryColor,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        text = tab.title,
+                        fontSize = 12.sp,
+                        color = if (isActive) primaryColor else textSecondaryColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 120.dp)
                     )
-                }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 8.dp),
-                    color = textSecondaryColor.copy(alpha = 0.3f)
-                )
-
-                // 功能介绍
-                Text(
-                    text = "功能介绍",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textPrimaryColor,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-
-                // 功能卡片
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = backgroundColor
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        FeatureRow(
-                            icon = Icons.Default.Star,
-                            text = "AI 智能对话编程助手",
-                            primaryColor = primaryColor,
-                            textSecondaryColor = textSecondaryColor
-                        )
-                        FeatureRow(
-                            icon = Icons.Default.Settings,
-                            text = "支持多种大语言模型",
-                            primaryColor = primaryColor,
-                            textSecondaryColor = textSecondaryColor
-                        )
-                        FeatureRow(
-                            icon = Icons.Default.Add,
-                            text = "代码解释、生成、优化",
-                            primaryColor = primaryColor,
-                            textSecondaryColor = textSecondaryColor
-                        )
-                        FeatureRow(
-                            icon = Icons.Default.Edit,
-                            text = "项目上下文理解",
-                            primaryColor = primaryColor,
-                            textSecondaryColor = textSecondaryColor
-                        )
-                        FeatureRow(
-                            icon = Icons.Default.Star,
-                            text = "记忆库功能",
-                            primaryColor = primaryColor,
-                            textSecondaryColor = textSecondaryColor
+                    // 加载状态指示器
+                    if (tab.isLoading) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(12.dp),
+                            strokeWidth = 1.dp,
+                            color = primaryColor
                         )
                     }
-                }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 8.dp),
-                    color = textSecondaryColor.copy(alpha = 0.3f)
-                )
-
-                // 点赞区域
-                Text(
-                    text = "喜欢这个插件？",
-                    fontSize = 13.sp,
-                    color = textPrimaryColor,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = "给我们点赞支持一下！",
-                    fontSize = 11.sp,
-                    color = textSecondaryColor,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
-
-                // 链接按钮组
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    LinkButton(
-                        text = "👍 点赞",
-                        url = "https://plugins.jetbrains.com/plugin/30117-overcode",
-                        primaryColor = primaryColor
-                    )
-                    LinkButton(
-                        text = "🌐 网站",
-                        url = "https://felinetech.cn/",
-                        primaryColor = primaryColor
-                    )
-                    LinkButton(
-                        text = "📧 邮箱",
-                        url = "mailto:fanguo922@gmail.com",
-                        primaryColor = primaryColor
+                    // 关闭按钮
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "关闭",
+                        modifier = Modifier
+                            .size(14.dp)
+                            .clickable { onTabClose(tab.id) },
+                        tint = textSecondaryColor
                     )
                 }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                    text = "感谢您的支持！",
-                    fontSize = 11.sp,
-                    color = primaryColor,
-                    fontWeight = FontWeight.Medium
-                )
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismissRequest) {
-                Text("知道了", color = primaryColor)
-            }
-        },
-        containerColor = surfaceColor,
-        titleContentColor = textPrimaryColor
-    )
+        }
+
+        // 新建 Tab 按钮
+        Surface(
+            modifier = Modifier
+                .padding(horizontal = 4.dp)
+                .clickable { onNewTab() },
+            color = backgroundColor,
+            shape = RoundedCornerShape(4.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, textSecondaryColor.copy(alpha = 0.3f))
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "新建会话",
+                modifier = Modifier
+                    .padding(8.dp)
+                    .size(16.dp),
+                tint = textSecondaryColor
+            )
+        }
+    }
 }

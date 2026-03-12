@@ -282,7 +282,7 @@ class ClaudeProvider(
                 }
             }
         }.also {
-            Log.info("Claude Request: ${it.toString()}")
+//            Log.info("Claude Request: ${it.toString()}")
         }
     }
 

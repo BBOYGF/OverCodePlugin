@@ -4,8 +4,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.github.bboygf.over_code.LAST_SESSION
 import com.github.bboygf.over_code.DEFAULT_SYSTEM_PROMPT
+import com.github.bboygf.over_code.LAST_SESSION
 import com.github.bboygf.over_code.enums.ChatPattern
 import com.github.bboygf.over_code.enums.ChatRole
 import com.github.bboygf.over_code.llm.LLMService
@@ -13,34 +13,25 @@ import com.github.bboygf.over_code.po.LLMMessage
 import com.github.bboygf.over_code.po.LlmToolCall
 import com.github.bboygf.over_code.po.LlmToolDefinition
 import com.github.bboygf.over_code.services.ChatDatabaseService
-import com.github.bboygf.over_code.vo.ChatMessageVo
-import com.github.bboygf.over_code.vo.MemoryVo
-import com.github.bboygf.over_code.vo.ModelConfigInfo
-import com.github.bboygf.over_code.vo.SessionInfo
-import com.intellij.openapi.command.WriteCommandAction
-import com.intellij.openapi.editor.EditorModificationUtil
-import com.intellij.openapi.fileEditor.FileEditorManager
-import com.intellij.openapi.project.Project
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.launch
-import java.awt.Toolkit
-import java.awt.datatransfer.StringSelection
-import java.util.concurrent.CopyOnWriteArrayList
 import com.github.bboygf.over_code.utils.ImageUtils
 import com.github.bboygf.over_code.utils.Log
 import com.github.bboygf.over_code.utils.ProjectFileUtils
 import com.github.bboygf.over_code.utils.ToolRegistry
-import kotlinx.coroutines.withContext
+import com.github.bboygf.over_code.vo.*
+import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.editor.EditorModificationUtil
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.project.Project
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
+import java.util.concurrent.CopyOnWriteArrayList
 
 
 /**
@@ -52,18 +43,57 @@ class HomeViewModel(
     private val dbService: ChatDatabaseService?,
     private val llmService: LLMService?
 ) {
-    // UI状态
-    var chatMessageVos by mutableStateOf(listOf<ChatMessageVo>())
+    // Tab 列表
+    var tabs by mutableStateOf(listOf<ChatTab>())
         private set
 
-    var currentSessionId by mutableStateOf("")
+    // 当前活动的 Tab ID
+    var activeTabId by mutableStateOf("")
         private set
 
-    var isLoading by mutableStateOf(false)
-        private set
+    // 获取当前活动的 Tab
+    fun getActiveTab(): ChatTab? = tabs.find { it.id == activeTabId }
 
-    var isCancelling by mutableStateOf(false)
-        private set
+    // 当前会话 ID（兼容属性）
+    var currentSessionId: String
+        get() = getActiveTab()?.sessionId ?: ""
+        private set(value) {
+            // 如果传入的 sessionId 和当前 Tab 的 sessionId 不同，切换到对应 Tab
+            val existingTab = tabs.find { it.sessionId == value }
+            if (existingTab != null && existingTab.id != activeTabId) {
+                switchTab(existingTab.id)
+            }
+        }
+
+    // 聊天消息列表（兼容属性 - 当前活动 Tab 的消息）
+    var chatMessageVos: List<ChatMessageVo>
+        get() = getActiveTab()?.messages ?: emptyList()
+        private set(value) {
+            tabs = tabs.map {
+                if (it.id == activeTabId) it.copy(messages = value) else it
+            }
+        }
+
+    // 是否正在加载（兼容属性）
+    var isLoading: Boolean
+        get() = getActiveTab()?.isLoading ?: false
+        private set(value) {
+            tabs = tabs.map {
+                if (it.id == activeTabId) it.copy(isLoading = value) else it
+            }
+        }
+
+    // 是否正在取消（兼容属性）
+    var isCancelling: Boolean
+        get() = getActiveTab()?.isCancelling ?: false
+        private set(value) {
+            tabs = tabs.map {
+                if (it.id == activeTabId) it.copy(isCancelling = value) else it
+            }
+        }
+
+    // 当前正在进行的 Job（按 Tab ID 存储）
+    private val tabJobs = mutableMapOf<String, Job?>()
 
     var loadHistory by mutableStateOf(true)
         private set
@@ -111,14 +141,143 @@ class HomeViewModel(
 
     private val ioScope = CoroutineScope(Dispatchers.IO)
     private val uiScope = CoroutineScope(Dispatchers.Main)
-    private var currentJob: Job? = null
 
     init {
+        // 初始化时加载最后一个会话或创建新会话
         ioScope.launch {
-            val lastSession = dbService?.getValue(LAST_SESSION) ?: "default";
+            val lastSession = dbService?.getValue(LAST_SESSION) ?: "default"
+            // 检查会话是否存在
+            val sessions = dbService?.loadSessions() ?: emptyList()
+            val sessionExists = sessions.any { it.sessionId == lastSession }
+
             withContext(Dispatchers.Main) {
-                currentSessionId = lastSession
+                if (sessionExists) {
+                    // 会话存在，创建 Tab 并加载消息
+                    val tabId = generateTabId()
+                    val messages = dbService?.loadMessages(lastSession) ?: emptyList()
+                    val sessionInfo = dbService?.getSessionBySessionId(lastSession)
+                    tabs = listOf(
+                        ChatTab(
+                            id = tabId,
+                            sessionId = lastSession,
+                            title = sessionInfo?.title ?: "新对话",
+                            messages = messages
+                        )
+                    )
+                    activeTabId = tabId
+                } else {
+                    // 会话不存在，创建新 Tab
+                    createTab()
+                }
             }
+        }
+    }
+
+    /**
+     * 生成唯一的 Tab ID
+     */
+    private fun generateTabId(): String = "tab_${System.currentTimeMillis()}_${(0..9999).random()}"
+
+    /**
+     * 创建新 Tab
+     */
+    fun createTab() {
+        dbService?.let { service ->
+            val newSessionId = service.createSession()
+            val newTabId = generateTabId()
+            val newTab = ChatTab(
+                id = newTabId,
+                sessionId = newSessionId,
+                title = "新对话",
+                messages = emptyList()
+            )
+            tabs = tabs + newTab
+            activeTabId = newTabId
+        }
+    }
+
+    /**
+     * 关闭 Tab
+     */
+    fun closeTab(tabId: String) {
+        val tabToClose = tabs.find { it.id == tabId } ?: return
+
+        // 取消正在进行的请求
+        tabJobs[tabId]?.cancel()
+        tabJobs.remove(tabId)
+
+        // 从列表中移除
+        tabs = tabs.filter { it.id != tabId }
+
+        // 如果关闭的是当前活动 Tab，切换到其他 Tab
+        if (activeTabId == tabId) {
+            if (tabs.isNotEmpty()) {
+                // 切换到最后一个 Tab
+                activeTabId = tabs.last().id
+            } else {
+                // 没有其他 Tab 了，创建新 Tab
+                createTab()
+            }
+        }
+
+        // 删除数据库中的会话
+        dbService?.deleteSession(tabToClose.sessionId)
+    }
+
+    /**
+     * 切换 Tab
+     */
+    fun switchTab(tabId: String) {
+        if (tabs.any { it.id == tabId }) {
+            activeTabId = tabId
+        }
+    }
+
+    /**
+     * 更新当前 Tab 的标题
+     */
+    fun updateTabTitle(title: String) {
+        tabs = tabs.map {
+            if (it.id == activeTabId) it.copy(title = title) else it
+        }
+        // 同时更新数据库中的会话标题
+        val currentTab = getActiveTab()
+        currentTab?.let {
+            dbService?.updateSessionTitle(it.sessionId, title)
+        }
+    }
+
+    /**
+     * 更新指定 Tab 的消息列表
+     */
+    private fun updateTabMessages(tabId: String, updater: (List<ChatMessageVo>) -> List<ChatMessageVo>) {
+        tabs = tabs.map {
+            if (it.id == tabId) it.copy(messages = updater(it.messages)) else it
+        }
+    }
+
+    /**
+     * 获取指定 Tab 的会话 ID
+     */
+    private fun getTabSessionId(tabId: String): String {
+        return tabs.find { it.id == tabId }?.sessionId ?: ""
+    }
+
+    /**
+     * 更新指定 Tab 的 loading 状态
+     */
+    private fun updateTabLoading(tabId: String, loading: Boolean) {
+        tabs = tabs.map {
+            if (it.id == tabId) it.copy(isLoading = loading) else it
+        }
+    }
+
+    /**
+     * 更新指定 Tab 的 cancelling 状态
+     */
+    private fun updateTabCancelling(tabId: String, cancelling: Boolean) {
+        tabs = tabs.map {
+            if (it.id == tabId) it.copy(isCancelling = cancelling) else it
         }
     }
 
@@ -126,10 +285,12 @@ class HomeViewModel(
      * 取消当前正在进行的请求
      */
     fun cancelCurrentRequest() {
-        currentJob?.cancel()
-        currentJob = null
-        isCancelling = false
-        isLoading = false
+        val currentTabId = activeTabId
+        tabJobs[currentTabId]?.cancel()
+        tabJobs[currentTabId] = null
+        // 更新当前活动 Tab 的状态
+        updateTabLoading(currentTabId, false)
+        updateTabCancelling(currentTabId, false)
     }
 
     /**
@@ -175,44 +336,60 @@ class HomeViewModel(
 
     /**
      * 加载指定会话的历史消息
+     * 在 Tab 模式下，这个方法会查找或创建对应的 Tab
      */
     fun loadMessages(sessionId: String) {
         if (sessionId.isEmpty()) return
+
+        // 检查是否已经存在该会话对应的 Tab
+        val existingTab = tabs.find { it.sessionId == sessionId }
+        if (existingTab != null) {
+            // 切换到已存在的 Tab
+            switchTab(existingTab.id)
+            return
+        }
+
+        // 创建新 Tab 并加载消息
         ioScope.launch {
-            chatMessageVos = dbService?.loadMessages(sessionId) ?: emptyList()
+            val messages = dbService?.loadMessages(sessionId) ?: emptyList()
+            val sessionInfo = dbService?.getSessionBySessionId(sessionId)
             withContext(Dispatchers.Main) {
-                if (currentSessionId != sessionId) {
-                    currentSessionId = sessionId
-                }
-            }
-            // 只有在 ID 确实变化时才更新“最后打开的会话”到数据库
-            val lastSaved = dbService?.getValue(LAST_SESSION)
-            if (lastSaved != sessionId) {
+                val newTabId = generateTabId()
+                val newTab = ChatTab(
+                    id = newTabId,
+                    sessionId = sessionId,
+                    title = sessionInfo?.title ?: "新对话",
+                    messages = messages
+                )
+                tabs = tabs + newTab
+                activeTabId = newTabId
+
+                // 更新最后打开的会话
                 dbService?.addOrUpdateValue(LAST_SESSION, sessionId)
             }
         }
     }
 
     /**
-     * 创建新会话
+     * 创建新会话（创建新 Tab）
      */
     fun createNewSession() {
-        dbService?.let {
-            currentSessionId = it.createSession()
-            chatMessageVos = emptyList()
-            showHistory = false
-        }
+        createTab()
+        showHistory = false
     }
 
     /**
      * 删除会话
      */
     fun deleteSession(sessionId: String) {
-        dbService?.deleteSession(sessionId)
-        loadSessions()
-        if (currentSessionId == sessionId) {
-            chatMessageVos = emptyList()
-            currentSessionId = "default"
+        // 找到对应的 Tab 并关闭
+        val tabToDelete = tabs.find { it.sessionId == sessionId }
+        if (tabToDelete != null) {
+            closeTab(tabToDelete.id)
+        } else {
+            // 如果没有对应的 Tab（可能是从历史会话列表删除），直接删除数据库
+            dbService?.deleteSession(sessionId)
+            loadSessions()
         }
     }
 
@@ -224,7 +401,7 @@ class HomeViewModel(
         chatMessageVos = emptyList()
     }
 
-    // ==================== 记忆功能 ====================
+// ==================== 记忆功能 ====================
 
     /**
      * 加载所有记忆概要
@@ -515,6 +692,11 @@ class HomeViewModel(
     fun sendMessage(userInput: String, onScrollToBottom: () -> Unit) {
         if (userInput.isBlank() && selectedImageBase64List.isEmpty() || isLoading) return
 
+        // 保存当前 Tab 的信息，避免切换 Tab 时引用错误
+        val currentTabId = activeTabId
+        val currentTabSessionId = currentSessionId
+        val currentTabMessages = chatMessageVos.toList()
+
         isLoading = true
         val currentImageList = selectedImageBase64List.toList()
         selectedImageBase64List.clear()
@@ -528,11 +710,13 @@ class HomeViewModel(
         )
         // 优化：简化 List 更新逻辑
         chatMessageVos = chatMessageVos + userMessage
-        dbService?.saveMessage(userMessage, currentSessionId)
-        val sessionInfo = dbService?.getSessionBySessionId(currentSessionId)
+        dbService?.saveMessage(userMessage, currentTabSessionId)
+        val sessionInfo = dbService?.getSessionBySessionId(currentTabSessionId)
 
+        // 如果是"新对话"，更新 Tab 标题
         if (sessionInfo != null && sessionInfo.title == "新对话") {
-            dbService.updateSessionTitle(currentSessionId, userInput.substring(0, userInput.length.coerceAtMost(100)))
+            val newTitle = userInput.substring(0, userInput.length.coerceAtMost(100))
+            updateTabTitle(newTitle)
         }
 
         // 2. 构建 LLM 消息列表
@@ -552,8 +736,8 @@ class HomeViewModel(
 //            )
 //        }
 
-        // 2.3 添加历史消息
-        llmMessages.addAll(chatMessageVos.mapIndexed { index, msg ->
+        // 2.3 添加历史消息（使用保存的当前 Tab 消息）
+        llmMessages.addAll(currentTabMessages.mapIndexed { index, msg ->
             LLMMessage(
                 role = msg.chatRole.role,
                 content = msg.content,
@@ -566,6 +750,15 @@ class HomeViewModel(
             )
         })
 
+        // 2.4 添加当前用户消息
+        llmMessages.add(
+            LLMMessage(
+                role = userMessage.chatRole.role,
+                content = userMessage.content,
+                images = userMessage.images
+            )
+        )
+
 
         // 工具定义
         // 使用注册表自动加载工具
@@ -574,7 +767,7 @@ class HomeViewModel(
             .filter { !it.isWriteTool || chatMode == ChatPattern.执行模式 }
             .map { it.toGenericDefinition() }
 
-        currentJob = ioScope.launch {
+        tabJobs[currentTabId] = ioScope.launch {
             // 用于累计最终显示的文本
             val contentBuilder = StringBuilder()
             try {
@@ -582,7 +775,8 @@ class HomeViewModel(
                     history = llmMessages,
                     tools = tools,
                     contentBuilder = contentBuilder,
-                    onScrollToBottom = onScrollToBottom
+                    onScrollToBottom = onScrollToBottom,
+                    tabId = currentTabId  // 传递当前 Tab ID
                 )
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) {
@@ -590,14 +784,15 @@ class HomeViewModel(
                     return@launch
                 }
                 e.printStackTrace()
-                Log.error("LLM 调用产生异常",e)
+                Log.error("LLM 调用产生异常", e)
                 // 显示错误弹窗
                 errorMessage = e.message ?: "未知错误"
                 showErrorDialog = true
             } finally {
-                isLoading = false
-                isCancelling = false
-                currentJob = null
+                // 使用保存的 currentTabId 更新正确的 Tab 状态
+                updateTabLoading(currentTabId, false)
+                updateTabCancelling(currentTabId, false)
+                tabJobs[currentTabId] = null
             }
         }
 
@@ -670,7 +865,8 @@ class HomeViewModel(
         history: MutableList<LLMMessage>,
         tools: List<LlmToolDefinition>,
         contentBuilder: StringBuilder,
-        onScrollToBottom: () -> Unit
+        onScrollToBottom: () -> Unit,
+        tabId: String  // 当前 Tab ID，用于更新正确的 Tab 消息
     ) {
         val callList = CopyOnWriteArrayList<LlmToolCall>()
         val currentThought = StringBuilder()
@@ -679,6 +875,9 @@ class HomeViewModel(
             println("请先设置模型！")
             return
         }
+
+        // 获取当前 Tab 的 sessionId
+        val currentTabSessionId = getTabSessionId(tabId)
 
         // 创建一个临时的 AI 消息用于实时显示流式输出
         val streamingMessageId = System.currentTimeMillis().toString()
@@ -691,7 +890,7 @@ class HomeViewModel(
 
         // 先添加到列表
         withContext(Dispatchers.Main) {
-            chatMessageVos = chatMessageVos + streamingMessage
+            updateTabMessages(tabId) { it + streamingMessage }
         }
 
         // 调用流式 API
@@ -704,8 +903,10 @@ class HomeViewModel(
                     // 实时更新消息内容
                     streamingMessage = streamingMessage.copy(content = contentBuilder.toString())
                     uiScope.launch {
-                        chatMessageVos = chatMessageVos.map {
-                            if (it.id == streamingMessageId) streamingMessage else it
+                        updateTabMessages(tabId) { messages ->
+                            messages.map {
+                                if (it.id == streamingMessageId) streamingMessage else it
+                            }
                         }
                     }
                     onScrollToBottom()
@@ -719,8 +920,10 @@ class HomeViewModel(
                 // 实时更新思考内容
                 streamingMessage = streamingMessage.copy(thought = currentThought.toString())
                 uiScope.launch {
-                    chatMessageVos = chatMessageVos.map {
-                        if (it.id == streamingMessageId) streamingMessage else it
+                    updateTabMessages(tabId) { messages ->
+                        messages.map {
+                            if (it.id == streamingMessageId) streamingMessage else it
+                        }
                     }
                 }
             }
@@ -735,11 +938,13 @@ class HomeViewModel(
                     thought = currentThought.toString().takeIf { it.isNotEmpty() }
                 )
                 withContext(Dispatchers.Main) {
-                    chatMessageVos = chatMessageVos.map {
-                        if (it.id == streamingMessageId) finalMessage else it
+                    updateTabMessages(tabId) { messages ->
+                        messages.map {
+                            if (it.id == streamingMessageId) finalMessage else it
+                        }
                     }
                 }
-                dbService?.saveMessage(finalMessage, currentSessionId)
+                dbService?.saveMessage(finalMessage, currentTabSessionId)
                 uiScope.launch { onScrollToBottom() }
             }
             return
@@ -758,11 +963,13 @@ class HomeViewModel(
             thoughtSignature = callList.firstOrNull()?.id
         )
         withContext(Dispatchers.Main) {
-            chatMessageVos = chatMessageVos.map {
-                if (it.id == streamingMessageId) assistantMessage else it
+            updateTabMessages(tabId) { messages ->
+                messages.map {
+                    if (it.id == streamingMessageId) assistantMessage else it
+                }
             }
         }
-        dbService?.saveMessage(assistantMessage, currentSessionId)
+        dbService?.saveMessage(assistantMessage, currentTabSessionId)
         uiScope.launch { onScrollToBottom() }
 
         // 并行执行工具
@@ -803,8 +1010,8 @@ class HomeViewModel(
                 chatRole = ChatRole.工具,
                 toolCallId = result.call.id
             )
-            chatMessageVos = chatMessageVos + toolsMessage
-            dbService?.saveMessage(toolsMessage, currentSessionId)
+            updateTabMessages(tabId) { it + toolsMessage }
+            dbService?.saveMessage(toolsMessage, currentTabSessionId)
             uiScope.launch { onScrollToBottom() }
         }
 
@@ -815,7 +1022,8 @@ class HomeViewModel(
             history = history,
             tools = tools,
             contentBuilder = contentBuilder,
-            onScrollToBottom = onScrollToBottom
+            onScrollToBottom = onScrollToBottom,
+            tabId = tabId
         )
     }
 
