@@ -12,7 +12,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.rounded.DateRange
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,7 +30,6 @@ import com.github.bboygf.over_code.enums.ChatRole
 import com.github.bboygf.over_code.vo.ChatMessageVo
 import com.github.bboygf.over_code.vo.EditInfo
 import com.github.bboygf.over_code.vo.MessagePart
-import com.intellij.icons.AllIcons
 
 
 /**
@@ -295,11 +293,11 @@ fun MessageBubble(
                     }
                 }
 
-                Column(modifier = Modifier.padding(12.dp)) {
-                    parts.forEach { part ->
-                        when (part) {
-                            is MessagePart.Header -> {
-                                SelectionContainer {
+                SelectionContainer {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        parts.forEach { part ->
+                            when (part) {
+                                is MessagePart.Header -> {
                                     Text(
                                         text = part.content,
                                         style = TextStyle(
@@ -314,25 +312,19 @@ fun MessageBubble(
                                         modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
                                     )
                                 }
-                            }
 
-                            is MessagePart.ListItem -> {
-                                Row(modifier = Modifier.padding(4.dp)) {
-                                    SelectionContainer {
+                                is MessagePart.ListItem -> {
+                                    Row(modifier = Modifier.padding(4.dp)) {
                                         Text(
                                             text = if (part.index != null) "${part.index}. " else "• ",
                                             color = Color(0xFFFFA726),
                                             fontWeight = FontWeight.Bold
                                         )
-                                    }
-                                    SelectionContainer {
                                         Text(text = part.content, color = Color.White, lineHeight = 20.sp)
                                     }
                                 }
-                            }
 
-                            is MessagePart.Text -> {
-                                SelectionContainer {
+                                is MessagePart.Text -> {
                                     Text(
                                         text = part.content,
                                         color = Color.White,
@@ -340,15 +332,15 @@ fun MessageBubble(
                                         modifier = Modifier.padding(vertical = 4.dp)
                                     )
                                 }
-                            }
 
-                            is MessagePart.Code -> {
-                                CodeBlock(
-                                    code = part.content,
-                                    language = part.language,
-                                    onCopy = { onCopyCode(part.content) },
-                                    onInsert = { onInsertCode(part.content) }
-                                )
+                                is MessagePart.Code -> {
+                                    CodeBlock(
+                                        code = part.content,
+                                        language = part.language,
+                                        onCopy = { onCopyCode(part.content) },
+                                        onInsert = { onInsertCode(part.content) }
+                                    )
+                                }
                             }
                         }
                     }
