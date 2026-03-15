@@ -9,6 +9,8 @@ import java.util.Base64
 import javax.imageio.ImageIO
 
 
+import com.intellij.util.ui.UIUtil
+
 /**
  * 图片处理工具类
  */
@@ -23,21 +25,41 @@ object ImageUtils {
         try {
             // 检查剪贴板是否有图片
             if (clipboard.isDataFlavorAvailable(DataFlavor.imageFlavor)) {
-                val image = clipboard.getData(DataFlavor.imageFlavor) as? BufferedImage
-                return image?.toBase64()
+                val image = clipboard.getData(DataFlavor.imageFlavor) as? java.awt.Image
+                if (image != null) {
+                    val bufferedImage = toBufferedImage(image)
+                    return bufferedImage.toBase64()
+                }
             }
             // (可选) 检查剪贴板是否有文件列表，且文件是图片
             if (clipboard.isDataFlavorAvailable(DataFlavor.javaFileListFlavor)) {
                 val files = clipboard.getData(DataFlavor.javaFileListFlavor) as? List<*>
                 val file = files?.firstOrNull() as? File
                 if (file != null && isImageFile(file)) {
-                    return ImageIO.read(file).toBase64()
+                    val fileImage = ImageIO.read(file)
+                    return fileImage?.toBase64()
                 }
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
         return null
+    }
+
+    /**
+     * 将普通的 java.awt.Image 转换为 BufferedImage
+     */
+    private fun toBufferedImage(img: java.awt.Image): BufferedImage {
+        if (img is BufferedImage) {
+            return img
+        }
+        val width = img.getWidth(null).takeIf { it > 0 } ?: 1
+        val height = img.getHeight(null).takeIf { it > 0 } ?: 1
+        val bimage = UIUtil.createImage(null, width, height, BufferedImage.TYPE_INT_ARGB)
+        val bGr = bimage.createGraphics()
+        bGr.drawImage(img, 0, 0, null)
+        bGr.dispose()
+        return bimage
     }
 
     /**

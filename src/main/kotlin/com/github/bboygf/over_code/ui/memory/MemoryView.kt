@@ -31,8 +31,6 @@ fun MemoryPanel(
     onAddMemory: (MemoryVo) -> Unit,
     onUpdateMemory: (String, MemoryVo) -> Unit,
     onDeleteMemory: (String) -> Unit,
-    onGenerateMemory: () -> Unit,
-    isGenerating: Boolean,
     backgroundColor: Color,
     surfaceColor: Color,
     textPrimaryColor: Color,
@@ -62,25 +60,6 @@ fun MemoryPanel(
             )
 
             Row {
-                // AI生成记忆按钮
-                IconButton(
-                    onClick = onGenerateMemory,
-                    enabled = !isGenerating
-                ) {
-                    if (isGenerating) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = primaryColor,
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "AI生成记忆",
-                            tint = primaryColor
-                        )
-                    }
-                }
                 // 添加记忆按钮
                 IconButton(onClick = { showAddMemoryDialog = true }) {
                     Icon(

@@ -131,6 +131,33 @@ fun OtherConfigurable(dbService: ChatDatabaseService) {
             )
         }
 
+        Spacer(Modifier.height(16.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = viewModel.loadMemory,
+                onCheckedChange = { viewModel.loadMemory = it },
+                colors = CheckboxDefaults.colors(
+                    checkedColor = Color(0xFF3574F0),
+                    uncheckedColor = Color.Gray,
+                    checkmarkColor = Color.White
+                )
+            )
+            Text(
+                text = "携带记忆摘要",
+                color = Color.White,
+                modifier = Modifier.padding(start = 8.dp)
+            )
+            Text(
+                text = " (每次请求都携带记忆摘要，首次打开时初始化该变量，避免每次读取文件)",
+                color = Color.Gray,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(start = 8.dp)
+            )
+        }
+
         // ----------------------------------------------------------------
         // 3. 操作按钮区域
         // ----------------------------------------------------------------

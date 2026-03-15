@@ -3,7 +3,7 @@
     <!-- 插件的唯一标识符。必须在全球范围内唯一，通常使用反写域名格式。 -->
     <id>com.guofan.overcode</id>
     <!-- 插件在插件市场和 IDE 设置中显示的名称。 -->
-    <name>Over Code</name>
+    <name>OverCode</name>
     <!-- 插件的开发商或作者信息。 -->
     <vendor>GuoFan</vendor>
 
@@ -48,7 +48,6 @@
             <add-to-group group-id="EditorPopupMenu" anchor="first"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt I"/>
         </action>
-
 
 
         <!-- 发送异常到聊天框 - 辅助 AI 分析异常 (控制台/Run窗口) -->

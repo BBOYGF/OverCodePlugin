@@ -13,6 +13,8 @@ class OtherConfigViewModel(private val dbService: ChatDatabaseService) {
 
     var port by mutableStateOf("10808")
 
+    var loadMemory by mutableStateOf(false)
+
     /**
      * 显示消息
      */
@@ -25,11 +27,13 @@ class OtherConfigViewModel(private val dbService: ChatDatabaseService) {
     fun loadConfig() {
         ipAdded = dbService.getValue("host") ?: "127.0.0.1"
         port = dbService.getValue("port") ?: "10808"
+        loadMemory = dbService.getLoadMemoryConfig()
     }
 
     fun updateConfig() {
         dbService.addOrUpdateValue("host", ipAdded)
         dbService.addOrUpdateValue("port", port)
+        dbService.setLoadMemoryConfig(loadMemory)
         showMsg = true
     }
 

@@ -7,10 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,10 +23,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.bboygf.over_code.enums.ChatPattern
-import com.github.bboygf.over_code.utils.Log
-import com.github.bboygf.over_code.vo.MessagePart
 import com.github.bboygf.over_code.vo.ModelConfigInfo
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.skia.Image
 import java.awt.Cursor
@@ -53,15 +47,13 @@ fun BottomInputArea(
     onModelSelect: (String) -> Unit,
     backgroundColor: Color,
     textColor: Color,
-    isChecked: Boolean,
-    onLoadHistoryChange: (Boolean) -> Unit,
     selectedImageBase64List: MutableList<String>,
     onDeleteImage: (String) -> Unit = {},
     onPasteImage: () -> Boolean = { false },
     onSelectImage: () -> Unit = {},
-    addProjectIndex: () -> Unit = {},
     isCancelling: Boolean = false,
     onCancel: () -> Unit = {},
+    onExtractMemory: () -> Unit = {},
 ) {
 
     var modeMenuExpanded by remember { mutableStateOf(false) }
@@ -243,7 +235,6 @@ fun BottomInputArea(
                 )
 
 
-
                 // 底部：下拉列表和发送按钮
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -341,16 +332,26 @@ fun BottomInputArea(
                                 }
                             }
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        // 是否携带历史消息
-                        Checkbox(isChecked, onCheckedChange = {
-                            onLoadHistoryChange(it)
-                        },colors = CheckboxDefaults.colors(checkedColor = Color(0xFF5D44A1)))
-                        Text(
-                            text = "历史消息",
-                            color = Color(0xFF888888),
-                            fontSize = 12.sp
-                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Row(
+                            modifier = Modifier
+                                .clickable(enabled = !isLoading) { onExtractMemory() }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "提炼记忆",
+                                tint = if (isLoading) Color(0xFF888888) else Color(0xFF4A9D5F),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "提炼记忆",
+                                color = if (isLoading) Color(0xFF888888) else Color(0xFF4A9D5F),
+                                fontSize = 12.sp
+                            )
+                        }
 
                     }
 

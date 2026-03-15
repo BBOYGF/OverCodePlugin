@@ -21,6 +21,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.github.bboygf.over_code.EXTRACT_MEMORY_PROMPT
 import com.github.bboygf.over_code.llm.LLMService
 import com.github.bboygf.over_code.services.ChatDatabaseService
 import com.github.bboygf.over_code.services.HomeViewModelService
@@ -32,6 +33,7 @@ import com.github.bboygf.over_code.ui.history.HistoryScreen
 import com.github.bboygf.over_code.ui.memory.MemoryPanel
 import com.github.bboygf.over_code.ui.model_config.ModelConfigurable
 import com.github.bboygf.over_code.utils.CodeEditNavigator
+import com.github.bboygf.over_code.utils.Log
 import com.github.bboygf.over_code.vo.ChatTab
 import com.intellij.openapi.fileChooser.FileChooser
 import com.intellij.openapi.fileChooser.FileChooserDescriptor
@@ -362,8 +364,6 @@ fun OverCodeChatUI(project: Project? = null) {
                                 )
                             },
                             onDeleteMemory = { viewModel.deleteMemory(it) },
-                            onGenerateMemory = { viewModel.generateMemoryFromSession() },
-                            isGenerating = viewModel.isGeneratingMemory,
                             backgroundColor = backgroundColor,
                             surfaceColor = surfaceColor,
                             textPrimaryColor = textPrimaryColor,
@@ -468,7 +468,7 @@ fun OverCodeChatUI(project: Project? = null) {
                                             scrollOffset = 10000
                                         )
                                     } catch (e: Exception) {
-                                        println("获取最后一行数据异常！" + e.message)
+                                        Log.error("获取最后一行数据异常！", e)
                                     }
                                 }
                             }
@@ -482,8 +482,6 @@ fun OverCodeChatUI(project: Project? = null) {
                 onModelSelect = { viewModel.setActiveModel(it) },
                 backgroundColor = surfaceColor,
                 textColor = textPrimaryColor,
-                isChecked = viewModel.loadHistory,
-                onLoadHistoryChange = { viewModel.onLoadHistoryChange(it) },
                 selectedImageBase64List = viewModel.selectedImageBase64List,
                 onDeleteImage = { base64 -> viewModel.removeImage(base64) },
                 onPasteImage = { viewModel.checkClipboardForImage() },
@@ -498,9 +496,24 @@ fun OverCodeChatUI(project: Project? = null) {
                         viewModel.addImage(base64)
                     }
                 },
-                addProjectIndex = { viewModel.addProjectIndex() },
                 isCancelling = viewModel.isCancelling,
-                onCancel = { viewModel.cancelCurrentRequest() }
+                onCancel = { viewModel.cancelCurrentRequest() },
+                onExtractMemory = {
+                    viewModel.sendMessage(EXTRACT_MEMORY_PROMPT) {
+                        coroutineScope.launch {
+                            if (viewModel.chatMessageVos.isNotEmpty()) {
+                                try {
+                                    listState.scrollToItem(
+                                        index = viewModel.chatMessageVos.size - 1,
+                                        scrollOffset = 10000
+                                    )
+                                } catch (e: Exception) {
+                                    Log.error("获取最后一行数据异常！", e)
+                                }
+                            }
+                        }
+                    }
+                }
             )
 
             // 错误提示对话框

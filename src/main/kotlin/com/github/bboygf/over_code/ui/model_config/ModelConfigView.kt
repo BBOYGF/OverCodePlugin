@@ -6,8 +6,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.TextSelectionColors
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.VerticalScrollbar
+import androidx.compose.foundation.rememberScrollbarAdapter
+import androidx.compose.foundation.ScrollbarStyle
+import androidx.compose.foundation.defaultScrollbarStyle
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
@@ -47,7 +53,7 @@ class ModelConfigurable(private val project: Project) : Configurable {
                         modifier = Modifier.fillMaxSize(),
                         color = Color(0xFF1E1F22)
                     ) {
-                        UnifiedConfigScreen(dbService,homeViewModelService)
+                        UnifiedConfigScreen(dbService, homeViewModelService)
                     }
                 }
             }
@@ -311,162 +317,177 @@ fun ModelConfigDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (config == null) "添加模型" else "编辑模型", color = Color.White) },
         text = {
-            Column(
-                modifier = Modifier.width(500.dp)
-                    .padding(8.dp)
-                    .background(Color(0xFF18191A)),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            val scrollState = rememberScrollState()
+            Box(
+                modifier = Modifier.width(500.dp).heightIn(max = 500.dp)
             ) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("配置名称") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White.copy(0.8f),
-                        focusedBorderColor = Color.White,
-                        focusedLabelColor = Color.White,
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.8f),
-                        unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
-                        selectionColors = TextSelectionColors(
-                            handleColor = Color.Black,
-                            backgroundColor = Color.White.copy(alpha = 0.4f)
-                        ),
-                        cursorColor = Color.White,
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                // 提供商选择（使用简单按钮）
                 Column(
                     modifier = Modifier
+                        .fillMaxWidth()
                         .background(Color(0xFF18191A))
+                        .verticalScroll(scrollState)
+                        .padding(end = 12.dp, top = 8.dp, bottom = 8.dp, start = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("提供商:", style = MaterialTheme.typography.bodySmall)
-                    Button(
-                        onClick = { showProviderMenu = !showProviderMenu },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF3574F0),
-                            contentColor = Color.White
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("配置名称") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White.copy(0.8f),
+                            focusedBorderColor = Color.White,
+                            focusedLabelColor = Color.White,
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.8f),
+                            unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
+                            selectionColors = TextSelectionColors(
+                                handleColor = Color.Black,
+                                backgroundColor = Color.White.copy(alpha = 0.4f)
+                            ),
+                            cursorColor = Color.White,
                         ),
-                    ) {
-                        Text(provider)
-                    }
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
-                    if (showProviderMenu) {
-                        Card(
+                    // 提供商选择（使用简单按钮）
+                    Column(
+                        modifier = Modifier
+                            .background(Color(0xFF18191A))
+                    ) {
+                        Text("提供商:", style = MaterialTheme.typography.bodySmall)
+                        Button(
+                            onClick = { showProviderMenu = !showProviderMenu },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color.White)
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF3574F0),
+                                contentColor = Color.White
+                            ),
                         ) {
-                            Column {
-                                providers.forEach { item ->
-                                    TextButton(
-                                        onClick = {
-                                            provider = item
-                                            showProviderMenu = false
-                                        },
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text(item)
+                            Text(provider)
+                        }
+
+                        if (showProviderMenu) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color.White)
+                            ) {
+                                Column {
+                                    providers.forEach { item ->
+                                        TextButton(
+                                            onClick = {
+                                                provider = item
+                                                showProviderMenu = false
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(item)
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
 
-                OutlinedTextField(
-                    value = baseUrl,
-                    onValueChange = { baseUrl = it },
-                    label = { Text("Base URL") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White.copy(0.8f),
-                        focusedBorderColor = Color.White,
-                        focusedLabelColor = Color.White,
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.8f),
-                        unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
-                        selectionColors = TextSelectionColors(
-                            handleColor = Color.Black,
-                            backgroundColor = Color.White.copy(alpha = 0.4f)
+                    OutlinedTextField(
+                        value = baseUrl,
+                        onValueChange = { baseUrl = it },
+                        label = { Text("Base URL") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White.copy(0.8f),
+                            focusedBorderColor = Color.White,
+                            focusedLabelColor = Color.White,
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.8f),
+                            unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
+                            selectionColors = TextSelectionColors(
+                                handleColor = Color.Black,
+                                backgroundColor = Color.White.copy(alpha = 0.4f)
+                            ),
+                            cursorColor = Color.White,
                         ),
-                        cursorColor = Color.White,
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = apiKey,
-                    onValueChange = { apiKey = it },
-                    label = { Text("API Key (可选)") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White.copy(0.8f),
-                        focusedBorderColor = Color.White,
-                        focusedLabelColor = Color.White,
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.8f),
-                        unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
-                        selectionColors = TextSelectionColors(
-                            handleColor = Color.Black,
-                            backgroundColor = Color.White.copy(alpha = 0.4f)
-                        ),
-                        cursorColor = Color.White,
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = modelName,
-                    onValueChange = { modelName = it },
-                    label = { Text("模型名称") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White.copy(0.8f),
-                        focusedBorderColor = Color.White,
-                        focusedLabelColor = Color.White,
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.8f),
-                        unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
-                        selectionColors = TextSelectionColors(
-                            handleColor = Color.Black,
-                            backgroundColor = Color.White.copy(alpha = 0.4f)
-                        ),
-                        cursorColor = Color.White,
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Checkbox(
-                        checked = isActive,
-                        onCheckedChange = { isActive = it },
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = Color(0xFF3574F0),
-                            uncheckedColor = Color.White.copy(alpha = 0.8f)
-                        )
+                        modifier = Modifier.fillMaxWidth()
                     )
-                    Text("设为当前使用的模型", color = Color.White)
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Checkbox(
-                        checked = useProxy,
-                        onCheckedChange = { useProxy = it },
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = Color(0xFF3574F0),
-                            uncheckedColor = Color.White.copy(alpha = 0.8f)
-                        )
-                    )
-                    Text("使用代理", color = Color.White)
-                }
 
-                Text(
-                    "提示: Ollama 本地模型无需 API Key",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
+                    OutlinedTextField(
+                        value = apiKey,
+                        onValueChange = { apiKey = it },
+                        label = { Text("API Key (可选)") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White.copy(0.8f),
+                            focusedBorderColor = Color.White,
+                            focusedLabelColor = Color.White,
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.8f),
+                            unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
+                            selectionColors = TextSelectionColors(
+                                handleColor = Color.Black,
+                                backgroundColor = Color.White.copy(alpha = 0.4f)
+                            ),
+                            cursorColor = Color.White,
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = modelName,
+                        onValueChange = { modelName = it },
+                        label = { Text("模型名称") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White.copy(0.8f),
+                            focusedBorderColor = Color.White,
+                            focusedLabelColor = Color.White,
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.8f),
+                            unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
+                            selectionColors = TextSelectionColors(
+                                handleColor = Color.Black,
+                                backgroundColor = Color.White.copy(alpha = 0.4f)
+                            ),
+                            cursorColor = Color.White,
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = isActive,
+                            onCheckedChange = { isActive = it },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = Color(0xFF3574F0),
+                                uncheckedColor = Color.White.copy(alpha = 0.8f)
+                            )
+                        )
+                        Text("设为当前使用的模型", color = Color.White)
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = useProxy,
+                            onCheckedChange = { useProxy = it },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = Color(0xFF3574F0),
+                                uncheckedColor = Color.White.copy(alpha = 0.8f)
+                            )
+                        )
+                        Text("使用代理", color = Color.White)
+                    }
+
+                    Text(
+                        "提示: Ollama 本地模型无需 API Key",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+                VerticalScrollbar(
+                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                    adapter = rememberScrollbarAdapter(scrollState),
+                    style = defaultScrollbarStyle().copy(
+                        unhoverColor = Color.White.copy(alpha = 0.3f),
+                        hoverColor = Color.White.copy(alpha = 0.6f)
+                    )
                 )
             }
         },

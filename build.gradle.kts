@@ -257,10 +257,6 @@ configurations.testRuntimeClasspath {
     exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
     exclude(group = "org.jetbrains.kotlin", module = "kotlin-annotation-processing-gradle")
 
-    // 排除 Skiko（如果你确认使用 IDE 自带的渲染器）
-//    exclude(group = "org.jetbrains.skiko", module = "skiko-awt")
-//    exclude(group = "org.jetbrains.skiko", module = "skiko-awt-runtime-windows-x64")
-
     // 排除通用注解
     exclude(group = "org.jetbrains", module = "annotations")
     exclude(group = "androidx.annotation", module = "annotation-jvm")

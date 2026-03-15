@@ -12,6 +12,7 @@ import com.github.bboygf.over_code.vo.ModelConfigInfo
 import com.github.bboygf.over_code.vo.PromptInfo
 import com.github.bboygf.over_code.vo.SessionInfo
 import com.github.bboygf.over_code.po.LlmToolCall
+import com.github.bboygf.over_code.LOAD_MEMORY_KEY
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 import kotlinx.serialization.encodeToString
@@ -29,6 +30,8 @@ import java.io.File
 class ChatDatabaseService(private val project: Project) {
 
     private val database: Database
+
+    private var loadMemoryCache: Boolean? = null
 
     init {
         // 获取插件数据目录
@@ -585,7 +588,7 @@ class ChatDatabaseService(private val project: Project) {
     /**
      * add Key Value
      */
-// 2. 添加或更新值 (Upsert)
+    // 2. 添加或更新值 (Upsert)
     fun addOrUpdateValue(targetKey: String, targetValue: String) {
         transaction {
             // 尝试先查询是否存在
@@ -605,6 +608,19 @@ class ChatDatabaseService(private val project: Project) {
                 }
             }
         }
+    }
+
+    fun getLoadMemoryConfig(): Boolean {
+        if (loadMemoryCache == null) {
+            val value = getValue(LOAD_MEMORY_KEY)
+            loadMemoryCache = value?.toBoolean() ?: false
+        }
+        return loadMemoryCache!!
+    }
+
+    fun setLoadMemoryConfig(value: Boolean) {
+        loadMemoryCache = value
+        addOrUpdateValue(LOAD_MEMORY_KEY, value.toString())
     }
 
 

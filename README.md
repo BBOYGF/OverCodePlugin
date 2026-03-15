@@ -1,6 +1,6 @@
 <div align="center">
   <img src="src/main/resources/icons/octopus.svg" alt="OverCode Logo" width="150"/>
-  <h1>Over Code 🚀</h1>
+  <h1>OverCode 🚀</h1>
 </div>
 
 > **"Don't just write code, OverCode it."** —— 深度集成于 IntelliJ IDEA 的下一代 AI 编程助手，赋予开发者完全的 AI 自主权。
@@ -16,9 +16,12 @@
 
 ---
 <!-- Plugin description -->
-OverCode is an intelligent AI assistant plugin for IntelliJ IDEA.
-It provides seamless integration with various LLM providers (OpenAI, Gemini, Ollama)
-to help developers generate code, translate text, and explain complex logic directly in the IDE.
+OverCode is an intelligent **AI programming assistant** and **code generation** plugin for IntelliJ IDEA, serving as a
+powerful tool for developers.
+It provides seamless integration with various LLM providers including **OpenAI (ChatGPT), DeepSeek, Claude, Gemini, and
+Ollama** (local models).
+OverCode empowers developers to **generate code, refactor, explain complex logic, detect bugs, and translate text**
+directly within the IDE seamlessly.
 
 ## 🌟 核心特性 (Key Features)
 
@@ -136,7 +139,8 @@ OverCode 支持多种大模型服务，您可以根据需求选择：
 - `Alt + F7`: 查看引用 (Find Usages)
 
 > - `Ctrl + B`: 跳转到定义 (Go to Declaration)
->   - `Ctrl + Shift + F10`: 运行当前文件 (Run)
+    >
+- `Ctrl + Shift + F10`: 运行当前文件 (Run)
 
 ---
 

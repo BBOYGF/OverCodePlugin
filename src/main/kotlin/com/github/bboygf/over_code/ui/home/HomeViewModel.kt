@@ -95,9 +95,6 @@ class HomeViewModel(
     // 当前正在进行的 Job（按 Tab ID 存储）
     private val tabJobs = mutableMapOf<String, Job?>()
 
-    var loadHistory by mutableStateOf(true)
-        private set
-
     var sessions by mutableStateOf(listOf<SessionInfo>())
         private set
 
@@ -130,11 +127,6 @@ class HomeViewModel(
     var memories by mutableStateOf<List<MemoryVo>>(emptyList())
         private set
 
-    // AI 生成记忆状态
-    var isGeneratingMemory by mutableStateOf(false)
-        private set
-
-
     // 使用 SharedFlow 发送单次执行的事件
     private val _scrollEvents = MutableSharedFlow<Int>()
     val scrollEvents = _scrollEvents.asSharedFlow()
@@ -143,6 +135,9 @@ class HomeViewModel(
     private val uiScope = CoroutineScope(Dispatchers.Main)
 
     init {
+        // 初始化加载所有记忆概要
+        loadMemories()
+
         // 初始化时加载最后一个会话或创建新会话
         ioScope.launch {
             val lastSession = dbService?.getValue(LAST_SESSION) ?: "default"
@@ -296,11 +291,6 @@ class HomeViewModel(
     fun dismissError() {
         showErrorDialog = false
         errorMessage = null
-    }
-
-    // 2. 暴露事件处理函数
-    fun onLoadHistoryChange(newValue: Boolean) {
-        loadHistory = newValue
     }
 
     /**
@@ -458,205 +448,6 @@ class HomeViewModel(
 
 
     /**
-     * 从当前会话生成记忆（用户手动触发）
-     */
-    fun generateMemoryFromSession() {
-        if (chatMessageVos.isEmpty()) return
-
-        ioScope.launch {
-            isGeneratingMemory = true
-            try {
-                analyzeAndSaveMemory(chatMessageVos)
-            } finally {
-                withContext(Dispatchers.Main) {
-                    isGeneratingMemory = false
-                }
-            }
-        }
-    }
-
-    /**
-     * 分析会话内容并生成记忆
-     */
-    private suspend fun analyzeAndSaveMemory(messages: List<ChatMessageVo>) {
-        if (messages.isEmpty()) return
-
-        val service = llmService ?: return
-
-        // 构建对话内容摘要
-        val conversationText = buildString {
-            messages.forEach { msg ->
-                append("【${msg.chatRole.name}】: ${msg.content.take(500)}\n")
-            }
-        }
-
-        // 调用 AI 分析并生成记忆
-        val analysisPrompt = """
-            请分析以下对话内容，识别出与传统项目不一样的"意外值"或特殊配置。
-
-            意外值的定义：
-            - 与常规开发实践不同的配置或设置
-            - 项目特有的架构或约定
-            - 特殊的依赖库或工具版本
-            - 自定义的代码风格或规范
-            - 任何可能影响后续开发的重要信息
-
-            对话内容：
-            $conversationText
-
-            请以JSON格式返回分析结果，格式如下：
-            {
-                "memories": [
-                    {
-                        "summary": "经验概要（简短描述，如：使用XX框架的特定版本）",
-                        "content": "经验详情（完整的配置、代码或说明）"
-                    }
-                ],
-                "summary": "整体总结"
-            }
-
-            注意：
-            1. 只返回JSON，不要包含其他内容
-            2. 如果没有发现任何意外值，返回 {"memories": [], "summary": "未发现需要记忆的内容"}
-            3. 每条记忆的 summary 和 content 都要有实际内容
-        """.trimIndent()
-
-        try {
-            val result = service.chat(
-                listOf(
-                    LLMMessage(role = "user", content = analysisPrompt)
-                )
-            )
-
-            // 解析 AI 返回的 JSON 结果
-            parseAndSaveMemory(result)
-        } catch (e: Exception) {
-            println("生成记忆失败: ${e.message}")
-        }
-    }
-
-    /**
-     * 解析 AI 返回的记忆并保存到数据库
-     */
-    private fun parseAndSaveMemory(jsonResult: String) {
-        try {
-            // 简单的 JSON 解析
-            val cleanedJson = jsonResult
-                .trim()
-                .replaceFirst("^```json".toRegex(), "")
-                .replaceFirst("^```".toRegex(), "")
-                .replace("```".toRegex(), "")
-                .trim()
-
-            val jsonElement = Json.parseToJsonElement(cleanedJson)
-            val rootObj = jsonElement.jsonObject
-
-            // 解析记忆列表
-            val memoriesArray = rootObj["memories"]?.jsonArray
-            memoriesArray?.forEach { memoryElement ->
-                val memoryObj = memoryElement.jsonObject
-                val summary = memoryObj["summary"]?.toString()?.replace("\"", "") ?: return@forEach
-                val content = memoryObj["content"]?.toString()?.replace("\"", "") ?: return@forEach
-
-                if (summary.isNotBlank() && content.isNotBlank()) {
-                    val memory = MemoryVo(
-                        summary = summary,
-                        content = content
-                    )
-                    dbService?.addMemory(memory)
-                }
-            }
-
-            // 刷新记忆列表
-            loadMemories()
-        } catch (e: Exception) {
-            println("解析记忆JSON失败: ${e.message}")
-            // 尝试使用更简单的方式解析
-            parseMemorySimple(jsonResult)
-        }
-    }
-
-    /**
-     * 简化的记忆解析方法（处理不标准的JSON格式）
-     */
-    private fun parseMemorySimple(text: String) {
-        try {
-            // 检查是否没有发现内容
-            if (text.contains("未发现") || text.contains("没有发现") || text.contains("{}")) {
-                return
-            }
-
-            // 简单解析：提取 summary 和 content
-            val lines = text.lines()
-            var currentSummary = ""
-            var currentContent = StringBuilder()
-
-            for (line in lines) {
-                when {
-                    // 检测概要行（包含"概要"、"标题"或【】包围的内容）
-                    line.contains("概要") || line.contains("标题") || (line.contains("【") && line.contains("】")) -> {
-                        // 保存前一个记忆
-                        if (currentSummary.isNotBlank() && currentContent.isNotEmpty()) {
-                            saveMemoryIfNeeded(currentSummary, currentContent.toString())
-                        }
-
-                        // 提取新概要
-                        currentSummary = line
-                            .replace(Regex(".*[概要标题]"), "")
-                            .replace(Regex("[【】:]"), "")
-                            .trim()
-                        if (currentSummary.isBlank()) {
-                            currentSummary = line.replace(Regex("[【】]"), "").trim()
-                        }
-                        currentContent = StringBuilder()
-                    }
-                    // 检测详情/内容行
-                    (line.contains("详情") || line.contains("内容") || line.contains("说明")) && line.contains(":") -> {
-                        currentContent.append(line.substringAfter(":").trim())
-                    }
-                    // 普通内容行
-                    line.trim()
-                        .isNotBlank() && !line.contains("{") && !line.contains("}") && !line.contains("概要") && !line.contains(
-                        "详情"
-                    ) -> {
-                        if (currentSummary.isNotBlank()) {
-                            currentContent.append(" ").append(line.trim())
-                        }
-                    }
-                }
-            }
-
-            // 保存最后一个记忆
-            if (currentSummary.isNotBlank() && currentContent.isNotEmpty()) {
-                saveMemoryIfNeeded(currentSummary, currentContent.toString())
-            }
-
-            // 刷新记忆列表
-            loadMemories()
-        } catch (e: Exception) {
-            println("简单解析记忆失败: ${e.message}")
-        }
-    }
-
-    /**
-     * 保存记忆（如果存在则更新）
-     */
-    private fun saveMemoryIfNeeded(summary: String, content: String) {
-        if (summary.isBlank() || content.isBlank()) return
-
-        // 检查是否已存在相同 summary 的记忆
-        val existingMemory = dbService?.getMemoryDetailBySummary(summary)
-        if (existingMemory != null) {
-            // 更新已存在的记忆
-            dbService?.updateMemory(existingMemory.memoryId, summary, content)
-        } else {
-            // 添加新记忆
-            dbService?.addMemory(MemoryVo(summary = summary, content = content))
-        }
-    }
-
-
-    /**
      * 设置当前选中的图片
      */
     fun addImage(base64: String) {
@@ -720,7 +511,8 @@ class HomeViewModel(
         val llmMessages = mutableListOf<LLMMessage>()
 
         // 2.1 & 2.2 组装系统提示词与记忆上下文
-        val memoryContext = getMemoryContext()
+        val isLoadMemory = dbService?.getLoadMemoryConfig() ?: false
+        val memoryContext = if (isLoadMemory) getMemoryContext() else ""
         val finalSystemPrompt = if (memoryContext.isNotBlank()) {
             """
             |$DEFAULT_SYSTEM_PROMPT
@@ -1043,20 +835,6 @@ class HomeViewModel(
         val editor = FileEditorManager.getInstance(currentProject).selectedTextEditor ?: return
         WriteCommandAction.runWriteCommandAction(currentProject) {
             EditorModificationUtil.insertStringAtCaret(editor, code)
-        }
-    }
-
-    /**
-     * 添加项目索引
-     */
-    fun addProjectIndex() {
-        if (project == null) return
-        ioScope.launch {
-            val projectIndexMsg = ProjectFileUtils.exportToMarkdown(project)
-            val currentText = getInputText?.invoke() ?: ""
-            uiScope.launch {
-                onInputTextChange?.invoke(currentText + "\r\n" + projectIndexMsg)
-            }
         }
     }
 }
