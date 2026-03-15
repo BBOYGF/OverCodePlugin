@@ -307,7 +307,7 @@ fun OverCodeChatUI(project: Project? = null) {
                     containerColor = surfaceColor,
                     titleContentColor = textPrimaryColor
                 ),
-                modifier = Modifier.height(45.dp)
+                modifier = Modifier.height(40.dp)
             )
 
             // Tab 栏
@@ -564,10 +564,10 @@ fun ChatTabRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(45.dp)
+            .height(35.dp)
             .background(backgroundColor)
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 4.dp, vertical = 2.dp),
+            .padding(horizontal = 4.dp, vertical = 0.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 渲染每个 Tab
@@ -575,7 +575,7 @@ fun ChatTabRow(
             val isActive = tab.id == activeTabId
             Surface(
                 modifier = Modifier
-                    .padding(horizontal = 4.dp)
+                    .padding(horizontal = 2.dp)
                     .clickable { onTabClick(tab.id) },
                 color = if (isActive) primaryColor.copy(alpha = 0.2f) else backgroundColor,
                 shape = RoundedCornerShape(4.dp),

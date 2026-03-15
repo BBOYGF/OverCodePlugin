@@ -234,17 +234,14 @@ class HomeViewModel(
     }
 
     /**
-     * 更新当前 Tab 的标题
+     * 更新指定 Tab 的标题
      */
-    fun updateTabTitle(title: String) {
+    fun updateTabTitle(tabId: String, sessionId: String, title: String) {
         tabs = tabs.map {
-            if (it.id == activeTabId) it.copy(title = title) else it
+            if (it.id == tabId) it.copy(title = title) else it
         }
         // 同时更新数据库中的会话标题
-        val currentTab = getActiveTab()
-        currentTab?.let {
-            dbService?.updateSessionTitle(it.sessionId, title)
-        }
+        dbService?.updateSessionTitle(sessionId, title)
     }
 
     /**
@@ -454,9 +451,8 @@ class HomeViewModel(
     fun getMemoryContext(): String {
         if (memories.isEmpty()) return ""
 
-        return memories.joinToString("\n\n") { memory ->
-            val detail = dbService?.getMemoryById(memory.memoryId)
-            "【${memory.summary}】\n${detail?.content ?: ""}"
+        return memories.joinToString("\n") { memory ->
+            "- ID: ${memory.memoryId}, 概要: ${memory.summary}"
         }
     }
 
@@ -695,9 +691,9 @@ class HomeViewModel(
         // 保存当前 Tab 的信息，避免切换 Tab 时引用错误
         val currentTabId = activeTabId
         val currentTabSessionId = currentSessionId
-        val currentTabMessages = chatMessageVos.toList()
+        val currentTabMessages = tabs.find { it.id == currentTabId }?.messages?.toList() ?: emptyList()
 
-        isLoading = true
+        updateTabLoading(currentTabId, true)
         val currentImageList = selectedImageBase64List.toList()
         selectedImageBase64List.clear()
 
@@ -708,33 +704,37 @@ class HomeViewModel(
             chatRole = ChatRole.用户,
             images = currentImageList
         )
-        // 优化：简化 List 更新逻辑
-        chatMessageVos = chatMessageVos + userMessage
+
+        // 优化：简化 List 更新逻辑并指定 Tab ID，防止并发切换 Tab 错乱
+        updateTabMessages(currentTabId) { it + userMessage }
         dbService?.saveMessage(userMessage, currentTabSessionId)
         val sessionInfo = dbService?.getSessionBySessionId(currentTabSessionId)
 
         // 如果是"新对话"，更新 Tab 标题
         if (sessionInfo != null && sessionInfo.title == "新对话") {
             val newTitle = userInput.substring(0, userInput.length.coerceAtMost(100))
-            updateTabTitle(newTitle)
+            updateTabTitle(currentTabId, currentTabSessionId, newTitle)
         }
 
         // 2. 构建 LLM 消息列表
         val llmMessages = mutableListOf<LLMMessage>()
 
-        // 2.1 添加系统提示词
-        llmMessages.add(LLMMessage(role = "system", content = DEFAULT_SYSTEM_PROMPT))
+        // 2.1 & 2.2 组装系统提示词与记忆上下文
+        val memoryContext = getMemoryContext()
+        val finalSystemPrompt = if (memoryContext.isNotBlank()) {
+            """
+            |$DEFAULT_SYSTEM_PROMPT
+            |
+            |【项目记忆库概览】以下是本项目已保存的记忆列表（仅含 ID 和概要）：
+            |$memoryContext
+            |
+            |如果发现以上概要与当前任务相关，请主动调用 get_memory_detail 工具查看详情。在发现项目特有的配置、架构约定、特殊依赖或代码规范时，请主动调用 save_memory 工具保存到记忆库中。
+            """.trimMargin()
+        } else {
+            DEFAULT_SYSTEM_PROMPT
+        }
 
-        // 2.2 添加记忆上下文
-//        val memoryContext = getMemoryContext()
-//        if (memoryContext.isNotBlank()) {
-//            llmMessages.add(
-//                LLMMessage(
-//                    role = "system",
-//                    content = "【项目记忆库】以下是这个项目的特殊记忆，在后续开发中请参考这些信息：\n\n$memoryContext\n\n请在发现项目特有的配置、架构约定、特殊依赖或代码规范时，主动调用 save_memory 工具保存到记忆库中。"
-//                )
-//            )
-//        }
+        llmMessages.add(LLMMessage(role = "system", content = finalSystemPrompt))
 
         // 2.3 添加历史消息（使用保存的当前 Tab 消息）
         llmMessages.addAll(currentTabMessages.mapIndexed { index, msg ->
